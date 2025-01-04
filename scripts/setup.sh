@@ -62,6 +62,10 @@ function setup_install {
         ssh $host -- "~/.kubedirect/scripts/setup.sh k8s" &
     done
     wait
+
+    # build and distribute kubelet binary
+    git submodule update --init --recursive
+    $BASE_DIR/build.sh kubelet
 }
 
 function setup_all {
