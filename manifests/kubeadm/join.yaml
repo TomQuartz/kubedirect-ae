@@ -1,0 +1,14 @@
+apiVersion: kubeadm.k8s.io/v1beta3
+kind: JoinConfiguration
+discovery:
+  # would be filled after kubeadm init generates these tokens
+  bootstrapToken:
+    apiServerEndpoint: ${API_ENDPOINT}
+    token: ${TOKEN}
+    caCertHashes:
+      - ${TOKEN_HASH}
+nodeRegistration:
+  imagePullPolicy: Always
+  # criSocket: unix:///var/run/containerd/containerd.sock
+  # kubeletExtraArgs:
+  #   feature-gates: "EventedPLEG=true"
