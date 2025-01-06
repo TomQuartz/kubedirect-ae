@@ -130,6 +130,9 @@ spec:
       - args:
         - --ip-masq
         - --kube-subnet-mgr
+        # matches the Cloudlab private net first
+        - --iface-regex=10\.10\.*\.*
+        - --iface-regex=*\.*\.*\.*
         command:
         - /opt/bin/flanneld
         env:

@@ -6,9 +6,6 @@ ROOT_DIR=$BASE_DIR/..
 
 set -ex
 
-MY_REPO="shengqipku"
-K8S_BUILD_TAG="v1.31.0-kubedirect"
-
 function build_kind {
     kind_image=$MY_REPO/kind-node:$K8S_BUILD_TAG
     cd $ROOT_DIR/kubernetes

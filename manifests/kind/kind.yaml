@@ -1,0 +1,38 @@
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+nodes:
+- role: control-plane
+  image: shengqipku/kind-node:v1.31.0-kubedirect
+  kubeadmConfigPatches:
+  - |
+    apiVersion: kubelet.config.k8s.io/v1beta1
+    kind: KubeletConfiguration
+    logging:
+      verbosity: 0
+  - |
+    apiVersion: kubeadm.k8s.io/v1beta3
+    kind: ClusterConfiguration
+    etcd:
+      local:
+        extraArgs:
+          quota-backend-bytes: "4294967296" # 4Gi
+          auto-compaction-retention: "15m"
+          auto-compaction-mode: "periodic"
+    apiServer:
+      extraArgs:
+        max-requests-inflight: "200000"
+        max-mutating-requests-inflight: "200000"
+        v: "0"
+    scheduler:
+      extraArgs:
+        v: "0"
+    controllerManager:
+      extraArgs:
+        feature-gates: "TopologyAwareHints=false"
+        concurrent-deployment-syncs: "100"
+        concurrent-replicaset-syncs: "100"
+        concurrent-endpoint-syncs: "50"
+        concurrent-service-endpoint-syncs: "50"
+        endpoint-updates-batch-period: "50ms"
+        endpointslice-updates-batch-period: "50ms"
+        v: "0"

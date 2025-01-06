@@ -44,7 +44,7 @@ apiServer:
 scheduler:
   extraArgs:
   - name: v
-    value: "0"
+    value: "2"
 controllerManager:
   extraArgs:
   - name: concurrent-deployment-syncs
@@ -62,7 +62,7 @@ controllerManager:
   - name: feature-gates
     value: TopologyAwareHints=false
   - name: v
-    value: "0"
+    value: "1"
 dns:
   imageRepository: registry.k8s.io
   imageTag: v1.11.1
@@ -75,12 +75,12 @@ etcd:
     - name: auto-compaction-mode
       value: periodic
     - name: auto-compaction-retention
-      value: 15m
+      value: 5m # shorter retention
     - name: quota-backend-bytes
-      value: "4294967296" # 4Gi
+      value: "8589934592" # 8Gi
 networking:
   dnsDomain: cluster.local
-  podSubnet: 10.244.0.0/16 # max 256 nodes
+  podSubnet: 10.224.0.0/11 # max 8192 nodes
   serviceSubnet: 10.96.0.0/12
 proxy: {}
 ---
@@ -128,7 +128,7 @@ logging:
   options:
     json:
       infoBufferSize: "0"
-  verbosity: 0
+  verbosity: 2
 metricsBindAddress: ""
 mode: "" # default: iptables
 nodePortAddresses: null

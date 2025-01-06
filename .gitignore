@@ -1,0 +1,5 @@
+_tmp_*
+*.bak
+*.log
+/log
+/watch

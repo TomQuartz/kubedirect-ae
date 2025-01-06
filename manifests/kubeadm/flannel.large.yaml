@@ -79,10 +79,10 @@ data:
         }
       ]
     }
-  # support 256*16=4096 nodes
+  # support 8192 nodes
   net-conf.json: |
     {
-      "Network": "10.240.0.0/12",
+      "Network": "10.224.0.0/11",
       "EnableNFTables": false,
       "Backend": {
         "Type": "vxlan"
@@ -131,6 +131,9 @@ spec:
       - args:
         - --ip-masq
         - --kube-subnet-mgr
+        # matches the Cloudlab private net first
+        - --iface-regex=10\.10\.*\.*
+        - --iface-regex=*\.*\.*\.*
         command:
         - /opt/bin/flanneld
         env:

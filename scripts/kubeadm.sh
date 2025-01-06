@@ -6,39 +6,38 @@ ROOT_DIR=$BASE_DIR/..
 
 set -ex
 
-# usage: kubeadm.sh run [large|debug] [#workers]
+# usage: kubeadm.sh run [large] [debug] [#workers]
 function run_kubeadm {
-    INIT_CONFIG=init.yaml
-    JOIN_CONFIG=join.yaml
-    CNI_CONFIG=flannel.yaml
+    if [ "$1" == "large" ]; then
+        large=".large"
+        shift
+    fi
+    if [ "$1" == "debug" ]; then
+        debug=".debug"
+        shift
+    fi
+    nodes=$1
 
-    mode=$1
-    case "$mode" in
-    large)
-        shift
-        INIT_CONFIG=init.large.yaml
-        CNI_CONFIG=flannel.large.yaml
-        ;;
-    debug)
-        shift
-        INIT_CONFIG=init.debug.yaml
-        ;;
-    esac
-    nWorkers=$1
+    INIT_CONFIG=init$large$debug.yaml
+    CNI_CONFIG=flannel$large.yaml
+    JOIN_CONFIG=join.yaml
 
     mkdir -p $LOG_DIR/kubeadm
     sudo rm -rf $LOG_DIR/kubeadm/*
+    rm -rf $MANIFESTS_DIR/kubeadm/_tmp_*
 
     # kubeadm init
-    sudo kubeadm init --config $MANIFESTS_DIR/kubeadm/$INIT_CONFIG 2>&1 | tee $ROOT_DIR/init.log
+    master_ip=$(ip -4 addr show | grep -oP 'inet 10\.\S+' | awk '{print $2}' | cut -d/ -f1)
+    MASTER_IP=$master_ip envsubst < $MANIFESTS_DIR/kubeadm/$INIT_CONFIG > $MANIFESTS_DIR/kubeadm/_tmp_.$INIT_CONFIG
+    sudo kubeadm init --config $MANIFESTS_DIR/kubeadm/_tmp_.$INIT_CONFIG 2>&1 | tee $ROOT_DIR/init.log
 
+    rm -rf $HOME/.kube
     mkdir -p $HOME/.kube
     sudo cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
     sudo chown $(id -u):$(id -g) $HOME/.kube/config
 
-    kubectl apply -f $MANIFESTS_DIR/kubeadm/$CNI_CONFIG
-    # read -p "Press enter to continue..."
     sleep 30
+    kubectl apply -f $MANIFESTS_DIR/kubeadm/$CNI_CONFIG
 
     api_endpoint=$(cat $ROOT_DIR/init.log | grep -oP '(?<=kubeadm join )[^\s]*' | head -n 1)
     token=$(cat $ROOT_DIR/init.log | grep -oP '(?<=--token )[^\s]*' | head -n 1)
@@ -47,7 +46,7 @@ function run_kubeadm {
     API_ENDPOINT=$api_endpoint TOKEN=$token TOKEN_HASH=$token_hash \
         envsubst < $MANIFESTS_DIR/kubeadm/$JOIN_CONFIG > $MANIFESTS_DIR/kubeadm/_tmp_.$JOIN_CONFIG
     
-    for worker in $(workers $nWorkers); do
+    for worker in $(workers $nodes); do
         echo "joining $worker"
         scp $MANIFESTS_DIR/kubeadm/_tmp_.$JOIN_CONFIG $worker:~/.kubedirect/kubeadm.join.yaml
         ssh $worker -- sudo kubeadm join $api_endpoint --config ~/.kubedirect/kubeadm.join.yaml
@@ -55,7 +54,8 @@ function run_kubeadm {
     done
 
     # install metrics-server
-    if [ "$mode" != "large" ]; then
+    if [ -z "$large" ]; then
+        sleep 30
         kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/download/v0.7.1/components.yaml
         kubectl patch -n kube-system deployment metrics-server \
             --type='json' \
@@ -73,15 +73,15 @@ function watch_control_plane {
     mkdir -p $WATCH_DIR && mkdir -p $WATCH_LOG
 
     # kube-controller-manager
-    kubectl logs -n kube-system kube-controller-manager-$master_node --follow >$WATCH_LOG/controller.log 2>&1 &
+    nohup kubectl logs -n kube-system kube-controller-manager-$master_node --follow >$WATCH_LOG/controller.log 2>&1 &
     pid=$!
     echo "$pid: controller-manager -> $WATCH_LOG/controller.log"
     echo $pid >> $WATCH_DIR/pids
     
-    # kube-apiserver
-    kubectl logs -n kube-system kube-apiserver-$master_node --follow >$WATCH_LOG/apiserver.log 2>&1 &
+    # kube-scheduler
+    nohup kubectl logs -n kube-system kube-scheduler-$master_node --follow >$WATCH_LOG/scheduler.log 2>&1 &
     pid=$!
-    echo "$!: apiserver -> $WATCH_LOG/apiserver.log"
+    echo "$!: scheduler -> $WATCH_LOG/scheduler.log"
     echo $pid >> $WATCH_DIR/pids
 }
 
@@ -92,7 +92,7 @@ function watch_kubelet {
     mkdir -p $WATCH_DIR && mkdir -p $WATCH_LOG
 
     for worker in $(workers $1); do
-        ssh $worker "sudo journalctl -u kubelet --follow" >$WATCH_LOG/kubelet-$worker.log 2>&1 &
+        nohup ssh $worker "sudo journalctl -u kubelet --follow" >$WATCH_LOG/kubelet-$worker.log 2>&1 &
         pid=$!
         echo "$pid: $1 kubelet -> $WATCH_LOG/kubelet-$worker.log"
         echo $pid >> $WATCH_DIR/pids
@@ -116,10 +116,7 @@ function clean_kubeadm {
     {
         ssh -q $host -- <<EOF
             sudo kubeadm reset -f
-            sudo systemctl stop kubelet
-            sudo systemctl stop containerd
             sudo journalctl --rotate --vacuum-time=1s
-            sudo rm -rf /etc/kubernetes/*
             sudo rm -rf /var/lib/kubelet/*
             sudo rm -rf /var/lib/etcd/*
             sudo rm -rf /etc/cni/net.d/*flannel*
@@ -131,18 +128,17 @@ function clean_kubeadm {
             sudo ip link delete flannel.1
             sudo ifconfig cni0 down
             sudo ip link delete cni0
-            sudo systemctl restart containerd
+            sudo systemctl restart docker.service docker.socket
 EOF
     } &
     done
     wait
-    rm -rf ~/.kube/config
-    sudo systemctl restart docker.service docker.socket containerd
+    rm -rf $HOME/.kube/
 }
 
 case "$1" in
 run)
-    # run [large|debug] [#workers]
+    # run [large] [debug] [#workers]
     shift
     run_kubeadm $@
     ;;
@@ -155,6 +151,8 @@ watch)
     elif [ "$1" == "kubelet" ]; then
         shift
         watch_kubelet $@
+    elif [ "$1" == "clean" ]; then
+        clean_watch
     fi
     ;;
 clean)

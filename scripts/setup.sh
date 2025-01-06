@@ -75,6 +75,7 @@ function setup_all {
 }
 
 function setup_reboot {
+    setup_ssh
     echo "Resetting configurations after reboot..."
     for host in $(hosts); do
     {
