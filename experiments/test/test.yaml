@@ -18,7 +18,7 @@ spec:
         app: test
         workload: test
         # NOTE: no need to set managed label for replicated pods
-        kubedirect/fallback: "binding"
+        # kubedirect/fallback: "binding"
         # kubedirect/kubelet-ignore: "true"
     spec:
       automountServiceAccountToken: false
