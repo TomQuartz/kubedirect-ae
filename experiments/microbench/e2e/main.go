@@ -32,9 +32,9 @@ func init() {
 
 // NOTE: use Deployment
 // k8s: no managed label
-// k8s+: no managed label + kubelet-ignore label(in the pod template) + custom kubelet
+// k8s+: no managed label + pod-lifecycle=dirigent label(in the pod template) + custom kubelet
 // kd: managed label
-// kd+: managed label + kubelet-ignore label(in the pod template) + custom kubelet
+// kd+: managed label + pod-lifecycle=dirigent label(in the pod template) + custom kubelet
 
 // custom kubelet:
 // 1. daemonset for the actual workload pods

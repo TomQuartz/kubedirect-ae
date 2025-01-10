@@ -53,6 +53,12 @@ function run_kubeadm {
         # ssh $worker -- sudo kubeadm join $api_endpoint --token $token --discovery-token-ca-cert-hash $token_hash
     done
 
+    # cp kubeconfig to all workers
+    for worker in $(workers $nodes); do
+        ssh $worker -- rm -rf ~/.kube
+        scp -r $HOME/.kube $worker:~
+    done
+
     # install metrics-server
     if [ -z "$large" ]; then
         sleep 30
@@ -129,11 +135,11 @@ function clean_kubeadm {
             sudo ifconfig cni0 down
             sudo ip link delete cni0
             sudo systemctl restart docker.service docker.socket
+            rm -rf ~/.kube
 EOF
     } &
     done
     wait
-    rm -rf $HOME/.kube/
 }
 
 case "$1" in

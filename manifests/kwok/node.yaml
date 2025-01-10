@@ -1,21 +1,22 @@
 apiVersion: v1
 kind: Node
 metadata:
+  name: ${NODENAME}
   annotations:
     node.alpha.kubernetes.io/ttl: "0"
     kwok.x-k8s.io/node: fake
   labels:
-    # Set empty addr label to avoid dialing until we populate it
-    kubedirect/kubelet-service-addr: ""
-    beta.kubernetes.io/arch: amd64
-    beta.kubernetes.io/os: linux
-    kubernetes.io/arch: amd64
+    type: kwok
     kubernetes.io/hostname: ${NODENAME}
-    kubernetes.io/os: linux
+    # mark as fake so daemonset with high toleration like kube-proxy won't get scheduled
+    beta.kubernetes.io/arch: fake-amd64
+    beta.kubernetes.io/os: fake-linux
+    kubernetes.io/arch: fake-amd64
+    kubernetes.io/os: fake-linux
     kubernetes.io/role: agent
     node-role.kubernetes.io/agent: ""
-    type: kwok
-  name: ${NODENAME}
+     # Set empty addr label to avoid dialing until we populate it
+    kubedirect/kubelet-service-addr: ""
 spec:
   taints: # Avoid scheduling real pods to fake Node
   - effect: NoSchedule
@@ -31,14 +32,14 @@ status:
     memory: 128Gi
     pods: 110
   nodeInfo:
-    architecture: amd64
+    architecture: fake-amd64
+    operatingSystem: fake-linux
     bootID: ""
     containerRuntimeVersion: ""
     kernelVersion: ""
     kubeProxyVersion: fake
     kubeletVersion: fake
     machineID: ""
-    operatingSystem: linux
     osImage: ""
     systemUUID: ""
   phase: Running

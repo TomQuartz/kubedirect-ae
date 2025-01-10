@@ -133,8 +133,8 @@ func run(ctx context.Context, mgr manager.Manager, nodeName string, target strin
 	if owner := templatePod.Labels[kdutil.OwnerNameLabel]; owner != target {
 		klog.Fatalf("Invalid owner label, expected %s, got %s", target, owner)
 	}
-	if !useDefaultKubelet && !kdutil.IsIgnoredByKubelet(templatePod) {
-		klog.Fatalf("Invalid template pod: must have kubelet-ignore label if using custom kubelet")
+	if useDefaultKubelet != kdutil.IsKubeletResponsibleFor(templatePod) {
+		klog.Fatalf("Invalid template pod: pod-lifecycle label does not match kubelet implementation")
 	}
 
 	podInfos := newPodInfos(templatePod.Namespace, target, nodeName, nPods)

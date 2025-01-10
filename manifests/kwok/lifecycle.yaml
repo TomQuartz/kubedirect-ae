@@ -7,12 +7,12 @@ spec:
     apiGroup: v1
     kind: Pod
   selector:
+    matchLabels:
+      kubedirect/pod-lifecycle: "kwok"
     matchExpressions:
     - key: '.metadata.deletionTimestamp'
       operator: 'DoesNotExist'
     - key: '.status.podIP'
-      operator: 'DoesNotExist'
-    - key: '.metadata.label["kubedirect/managed"]'
       operator: 'DoesNotExist'
   delay:
     durationMilliseconds: 1000
@@ -103,6 +103,8 @@ spec:
     apiGroup: v1
     kind: Pod
   selector:
+    matchLabels:
+      kubedirect/pod-lifecycle: "kwok"
     matchExpressions:
     - key: .metadata.deletionTimestamp
       operator: DoesNotExist
@@ -128,6 +130,8 @@ spec:
     apiGroup: v1
     kind: Pod
   selector:
+    matchLabels:
+      kubedirect/pod-lifecycle: "kwok"
     matchExpressions:
     - key: .metadata.deletionTimestamp
       operator: Exists
@@ -177,6 +181,8 @@ spec:
     apiGroup: v1
     kind: Node
   selector:
+    matchLabels:
+      type: kwok
     matchExpressions:
     - key: .status.phase
       operator: In
@@ -260,6 +266,8 @@ spec:
     apiGroup: v1
     kind: Node
   selector:
+    matchLabels:
+      type: kwok
     matchExpressions:
     - key: .status.conditions.[] | select( .type == "Ready" ) | .status
       operator: NotIn

@@ -19,7 +19,7 @@ spec:
         workload: test
         # NOTE: no need to set managed label for replicated pods
         # kubedirect/fallback: "binding"
-        # kubedirect/kubelet-ignore: "true"
+        # kubedirect/pod-lifecycle: "kwok"
     spec:
       automountServiceAccountToken: false
       tolerations:

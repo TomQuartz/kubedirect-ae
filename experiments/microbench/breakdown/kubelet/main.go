@@ -33,7 +33,7 @@ func init() {
 // NOTE: no ReplicaSet, just a template pod
 // measures the time from grpc call to pod ready
 // kubelet: nothing special
-// dirigent: custom kubelet
+// dirigent: custom kubelet, template pod must have pod-lifecycle=dirigent label
 // 1. daemonset for the actual workload pods
 // 2. run the custom kubelets (override kubelet service annotation)
 func main() {
