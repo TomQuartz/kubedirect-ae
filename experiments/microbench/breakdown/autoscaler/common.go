@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"log"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -143,18 +142,18 @@ func (m *ReplicaSetMonitor) Reconcile(ctx context.Context, req ctrl.Request) (ct
 func run(ctx context.Context, mgr manager.Manager, selector string, nPods int, fallback bool) {
 	monitor := NewReplicaSetMonitor(selector)
 	if err := monitor.SetupWithManager(ctx, mgr); err != nil {
-		log.Fatalf("Error creating monitor: %v\n", err)
+		klog.Fatalf("Error creating monitor: %v", err)
 	}
 
-	log.Println("Starting manager")
+	klog.Info("Starting manager")
 	go func() {
 		if err := mgr.Start(ctx); err != nil {
-			log.Fatalf("Error running manager: %v\n", err)
+			klog.Fatalf("Error running manager: %v", err)
 		}
 	}()
 
 	if !mgr.GetCache().WaitForCacheSync(ctx) {
-		log.Fatalf("Cannot syncing manager cache\n")
+		klog.Fatalf("Cannot syncing manager cache")
 	}
 
 	monitorTargets := &appsv1.ReplicaSetList{}
@@ -164,10 +163,10 @@ func run(ctx context.Context, mgr manager.Manager, selector string, nPods int, f
 		workload.CtrlListOptions...,
 	)
 	if err := mgrClient.List(ctx, monitorTargets, listOpts...); err != nil {
-		log.Fatalf("Error listing ReplicaSet: %v\n", err)
+		klog.Fatalf("Error listing ReplicaSet: %v", err)
 	}
 	if len(monitorTargets.Items) == 0 {
-		log.Fatalf("No ReplicaSet selected\n")
+		klog.Fatalf("No ReplicaSet selected")
 	}
 
 	targetKeys := sets.New[string]()
@@ -175,19 +174,19 @@ func run(ctx context.Context, mgr manager.Manager, selector string, nPods int, f
 	for i := range monitorTargets.Items {
 		rs := &monitorTargets.Items[i]
 		if fallback && kdutil.IsManaged(rs) {
-			log.Fatalf("ReplicaSet %s/%s must not be managed in fallback mode\n", rs.Namespace, rs.Name)
+			klog.Fatalf("ReplicaSet %s/%s must not be managed in fallback mode", rs.Namespace, rs.Name)
 		}
 		key := workload.KeyFromObject(rs)
 		ownerRef := metav1.GetControllerOfNoCopy(rs)
 		if ownerRef == nil {
-			log.Fatalf("ReplicaSet %s/%s has no owner\n", rs.Namespace, rs.Name)
+			klog.Fatalf("ReplicaSet %s/%s has no owner", rs.Namespace, rs.Name)
 		}
 		owner := &appsv1.Deployment{}
 		if err := mgrClient.Get(ctx, workload.NamespacedNameFromKey(key), owner); err != nil {
-			log.Fatalf("Error getting Deployment target %s from ReplicaSet %s: %v\n", key, klog.KObj(rs), err)
+			klog.Fatalf("Error getting Deployment target %s from ReplicaSet %s: %v", key, klog.KObj(rs), err)
 		}
 		if targetKeys.Has(key) {
-			log.Fatalf("Duplicate Deployment target %s from ReplicaSet %s/%s\n", key, rs.Namespace, rs.Name)
+			klog.Fatalf("Duplicate Deployment target %s from ReplicaSet %s/%s", key, rs.Namespace, rs.Name)
 		}
 		targetKeys.Insert(key)
 		targets = append(targets, owner)
@@ -195,7 +194,7 @@ func run(ctx context.Context, mgr manager.Manager, selector string, nPods int, f
 
 	nPodsPerTarget := nPods / len(targets)
 	if nPodsPerTarget == 0 {
-		log.Println("[WARN] The number of pods scaled per target is 0, resetting to 1")
+		klog.Warning("The number of pods scaled per target is 0, resetting to 1")
 		nPodsPerTarget = 1
 	}
 
@@ -206,14 +205,13 @@ func run(ctx context.Context, mgr manager.Manager, selector string, nPods int, f
 		monitor.Watch(wg, workload.KeyFromObject(target), nPodsPerTarget)
 	}
 
-	logger := klog.FromContext(ctx)
 	start := time.Now()
 	for i := range targets {
 		target := targets[i]
 		*target.Spec.Replicas = int32(nPodsPerTarget)
 		go func() {
 			if err := mgrClient.Update(ctx, target); err != nil {
-				logger.Error(err, "Error scaling up", "target", klog.KObj(target))
+				klog.Error(err, "Error scaling up", "target", klog.KObj(target))
 			}
 		}()
 	}

@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"log"
 	"sync"
 	"time"
 
@@ -125,17 +124,17 @@ func run(ctx context.Context, mgr manager.Manager, nodeName string, target strin
 		Name:      target + "-template",
 	}
 	if err := uncachedClient.Get(ctx, templatePodKey, templatePod); err != nil {
-		log.Fatalf("Error getting template pod: %v\n", err)
+		klog.Fatalf("Error getting template pod: %v", err)
 	}
 
 	if !kdutil.IsTemplatePod(templatePod) {
-		log.Fatalf("Invalid template pod: missing template pod label\n")
+		klog.Fatalf("Invalid template pod: missing template pod label")
 	}
 	if owner := templatePod.Labels[kdutil.OwnerNameLabel]; owner != target {
-		log.Fatalf("Invalid owner label, expected %s, got %s\n", target, owner)
+		klog.Fatalf("Invalid owner label, expected %s, got %s", target, owner)
 	}
 	if !useDefaultKubelet && !kdutil.IsIgnoredByKubelet(templatePod) {
-		log.Fatalf("Invalid template pod: must have kubelet-ignore label if using custom kubelet\n")
+		klog.Fatalf("Invalid template pod: must have kubelet-ignore label if using custom kubelet")
 	}
 
 	podInfos := newPodInfos(templatePod.Namespace, target, nodeName, nPods)
@@ -144,19 +143,18 @@ func run(ctx context.Context, mgr manager.Manager, nodeName string, target strin
 	// setup pod monitor
 	monitor := NewPodMonitor(target)
 	if err := monitor.SetupWithManager(ctx, mgr); err != nil {
-		log.Fatalf("Error creating monitor: %v\n", err)
+		klog.Fatalf("Error creating monitor: %v", err)
 	}
 
 	wg := &sync.WaitGroup{}
 	wg.Add(len(reqs))
 	monitor.Watch(wg, podInfos)
 
-	logger := klog.FromContext(ctx)
 	start := time.Now()
 	for i := range reqs {
 		go func(i int) {
 			if _, err := kdClient.Client().BindPod(ctx, reqs[i]); err != nil {
-				logger.Error(err, "Error binding pod", "pod", podInfos[i])
+				klog.Error(err, "Error binding pod", "pod", podInfos[i])
 			}
 		}(i)
 	}

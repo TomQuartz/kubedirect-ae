@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"log"
 	"sync"
 	"time"
 
@@ -127,17 +126,17 @@ func (m *PodMonitor) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 func run(ctx context.Context, mgr manager.Manager, selector string, nPods int) {
 	monitor := NewPodMonitor(selector)
 	if err := monitor.SetupWithManager(ctx, mgr); err != nil {
-		log.Fatalf("Error creating monitor: %v\n", err)
+		klog.Fatalf("Error creating monitor: %v", err)
 	}
 
-	log.Println("Starting manager")
+	klog.Info("Starting manager")
 	go func() {
 		if err := mgr.Start(ctx); err != nil {
-			log.Fatalf("Error running manager: %v\n", err)
+			klog.Fatalf("Error running manager: %v", err)
 		}
 	}()
 	if !mgr.GetCache().WaitForCacheSync(ctx) {
-		log.Fatalf("Cannot syncing manager cache\n")
+		klog.Fatalf("Cannot syncing manager cache")
 	}
 
 	targets := &appsv1.DeploymentList{}
@@ -147,19 +146,19 @@ func run(ctx context.Context, mgr manager.Manager, selector string, nPods int) {
 		workload.CtrlListOptions...,
 	)
 	if err := mgrClient.List(ctx, targets, listOpts...); err != nil {
-		log.Fatalf("Error listing Deployments: %v\n", err)
+		klog.Fatalf("Error listing Deployments: %v", err)
 	}
 	if len(targets.Items) == 0 {
-		log.Fatal("No Deployment selected\n")
+		klog.Fatal("No Deployment selected")
 	}
 
 	nPodsPerTarget := nPods / len(targets.Items)
 	if nPodsPerTarget == 0 {
-		log.Println("[WARN] The number of pods scaled per target is 0, resetting to 1")
+		klog.Warning("The number of pods scaled per target is 0, resetting to 1")
 		nPodsPerTarget = 1
 	}
 	nPods = nPodsPerTarget * len(targets.Items)
-	log.Printf("Scaling up %d pods over %d deployments\n", nPods, len(targets.Items))
+	klog.Infof("Scaling up %d pods over %d deployments", nPods, len(targets.Items))
 
 	wg := &sync.WaitGroup{}
 	wg.Add(nPods)
@@ -168,14 +167,13 @@ func run(ctx context.Context, mgr manager.Manager, selector string, nPods int) {
 		monitor.Watch(wg, workload.KeyFromObject(target))
 	}
 
-	logger := klog.FromContext(ctx)
 	start := time.Now()
 	for i := range targets.Items {
 		target := &targets.Items[i]
 		*target.Spec.Replicas = int32(nPodsPerTarget)
 		go func() {
 			if err := mgrClient.Update(ctx, target); err != nil {
-				logger.Error(err, "Error scaling up", "target", klog.KObj(target))
+				klog.Error(err, "Error scaling up", "target", klog.KObj(target))
 			}
 		}()
 	}

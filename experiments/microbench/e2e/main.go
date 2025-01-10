@@ -18,13 +18,17 @@ package main
 
 import (
 	"flag"
-	"log"
 
+	"k8s.io/klog/v2"
 	ctrl "sigs.k8s.io/controller-runtime"
 
 	// Kubedirect
 	benchutil "github.com/tomquartz/kubedirect-bench/pkg/util"
 )
+
+func init() {
+	klog.InitFlags(nil)
+}
 
 // NOTE: use Deployment
 // k8s: no managed label
@@ -36,31 +40,29 @@ import (
 // 1. daemonset for the actual workload pods
 // 2. run the custom kubelets (override kubelet service annotation)
 func main() {
-	var debug bool
 	var baseline string
 	var selector string
 	var nPods int
 
 	// NOTE: should create the deployments ahead of time
-	flag.BoolVar(&debug, "debug", false, "Enable debug log")
 	flag.StringVar(&baseline, "baseline", "k8s", "Baseline for the experiment. Options: k8s, k8s+, kd, kd+")
 	flag.StringVar(&selector, "selector", "", "Select Deployments with `workload=$selector` selector")
 	flag.IntVar(&nPods, "n", 100, "Total number of pods to scale up")
 	flag.Parse()
 
-	benchutil.SetupLogger(debug)
+	ctx := ctrl.SetupSignalHandler()
+	ctrl.SetLogger(klog.Background())
 
 	if selector == "" {
-		log.Fatalf("must specify workload selector\n")
+		klog.Fatalf("must specify workload selector")
 	}
 
-	ctx := ctrl.SetupSignalHandler()
 	mgr := benchutil.NewManagerOrDie()
 
 	switch baseline {
 	case "k8s", "k8s+", "kd", "kd+":
 	default:
-		log.Fatalf("unknown baseline %s\n", baseline)
+		klog.Fatalf("unknown baseline %s", baseline)
 	}
 
 	// We do not check on the various specs as per the NOTEs because it's too complicated to do so in code

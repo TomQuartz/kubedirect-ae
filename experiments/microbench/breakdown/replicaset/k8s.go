@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"log"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -141,18 +140,18 @@ func (m *ReplicaSetMonitor) Reconcile(ctx context.Context, req ctrl.Request) (ct
 func runK8s(ctx context.Context, mgr manager.Manager, selector string, nPods int) {
 	monitor := NewReplicaSetMonitor(selector)
 	if err := monitor.SetupWithManager(ctx, mgr); err != nil {
-		log.Fatalf("Error creating monitor: %v\n", err)
+		klog.Fatalf("Error creating monitor: %v", err)
 	}
 
-	log.Println("Starting manager")
+	klog.Info("Starting manager")
 	go func() {
 		if err := mgr.Start(ctx); err != nil {
-			log.Fatalf("Error running manager: %v\n", err)
+			klog.Fatalf("Error running manager: %v", err)
 		}
 	}()
 
 	if !mgr.GetCache().WaitForCacheSync(ctx) {
-		log.Fatalf("Cannot syncing manager cache\n")
+		klog.Fatalf("Cannot syncing manager cache")
 	}
 
 	targets := &appsv1.ReplicaSetList{}
@@ -162,10 +161,10 @@ func runK8s(ctx context.Context, mgr manager.Manager, selector string, nPods int
 		workload.CtrlListOptions...,
 	)
 	if err := mgrClient.List(ctx, targets, listOpts...); err != nil {
-		log.Fatalf("Error listing scaling targets: %v\n", err)
+		klog.Fatalf("Error listing scaling targets: %v", err)
 	}
 	if len(targets.Items) == 0 {
-		log.Fatalf("No scaling targets\n")
+		klog.Fatalf("No scaling targets")
 	}
 	nPodsPerTarget := nPods / len(targets.Items)
 
@@ -176,14 +175,13 @@ func runK8s(ctx context.Context, mgr manager.Manager, selector string, nPods int
 		monitor.Watch(wg, workload.KeyFromObject(target), nPodsPerTarget)
 	}
 
-	logger := klog.FromContext(ctx)
 	start := time.Now()
 	for i := range targets.Items {
 		target := &targets.Items[i]
 		*target.Spec.Replicas = int32(nPodsPerTarget)
 		go func() {
 			if err := mgrClient.Update(ctx, target); err != nil {
-				logger.Error(err, "Error scaling up", "target", klog.KObj(target))
+				klog.Error(err, "Error scaling up", "target", klog.KObj(target))
 			}
 		}()
 	}

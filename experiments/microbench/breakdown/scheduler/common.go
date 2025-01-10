@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"log"
 	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -110,17 +109,17 @@ func run(ctx context.Context, mgr manager.Manager, target string, nPods int, fal
 		Name:      target + "-template",
 	}
 	if err := uncachedClient.Get(ctx, templatePodKey, templatePod); err != nil {
-		log.Fatalf("Error getting template pod: %v\n", err)
+		klog.Fatalf("Error getting template pod: %v", err)
 	}
 
 	if !kdutil.IsTemplatePod(templatePod) {
-		log.Fatalf("Invalid template pod: missing template pod label\n")
+		klog.Fatalf("Invalid template pod: missing template pod label")
 	}
 	if owner := templatePod.Labels[kdutil.OwnerNameLabel]; owner != target {
-		log.Fatalf("Invalid owner label, expected %s, got %s\n", target, owner)
+		klog.Fatalf("Invalid owner label, expected %s, got %s", target, owner)
 	}
 	if fallback && !kdutil.IsFallbackBinding(templatePod) {
-		log.Fatalf("Invalid template pod: missing fallback binding label\n")
+		klog.Fatalf("Invalid template pod: missing fallback binding label")
 	}
 
 	fakeReplicaSet := &appsv1.ReplicaSet{
@@ -134,10 +133,9 @@ func run(ctx context.Context, mgr manager.Manager, target string, nPods int, fal
 	req := kdrpc.NewPodSchedulingRequest(kdClient, fakeReplicaSet, nPods)
 	req.Blocking = true
 
-	logger := klog.FromContext(ctx)
 	start := time.Now()
 	if _, err := kdClient.Client().SchedulePods(ctx, req); err != nil {
-		logger.Error(err, "Error scaling up", "target", klog.KObj(fakeReplicaSet))
+		klog.Error(err, "Error scaling up", "target", klog.KObj(fakeReplicaSet))
 	}
 
 	fmt.Printf("total: %v us\n", time.Since(start).Microseconds())

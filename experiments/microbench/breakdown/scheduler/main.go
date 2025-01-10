@@ -18,37 +18,39 @@ package main
 
 import (
 	"flag"
-	"log"
 
+	"k8s.io/klog/v2"
 	ctrl "sigs.k8s.io/controller-runtime"
 
 	// Kubedirect
 	benchutil "github.com/tomquartz/kubedirect-bench/pkg/util"
 )
 
+func init() {
+	klog.InitFlags(nil)
+}
+
 // NOTE: no ReplicaSet, just a template pod
 // k8s: fallback=binding + blocking rpc
 // kd: blocking rpc
 func main() {
-	var debug bool
 	var baseline string
 	var target string
 	var nPods int
 
 	// NOTE: should create the deployments ahead of time
-	flag.BoolVar(&debug, "debug", false, "Enable debug log")
 	flag.StringVar(&baseline, "baseline", "k8s", "Baseline for the experiment. Options: k8s, kd")
 	flag.StringVar(&target, "target", "", "target ReplicaSet name")
 	flag.IntVar(&nPods, "n", 100, "Total number of pods to scale up")
 	flag.Parse()
 
-	benchutil.SetupLogger(debug)
+	ctx := ctrl.SetupSignalHandler()
+	ctrl.SetLogger(klog.Background())
 
 	if target == "" {
-		log.Fatalf("must specify target ReplicaSet\n")
+		klog.Fatalf("must specify target ReplicaSet")
 	}
 
-	ctx := ctrl.SetupSignalHandler()
 	mgr := benchutil.NewManagerOrDie()
 
 	if baseline == "k8s" {
@@ -56,6 +58,6 @@ func main() {
 	} else if baseline == "kd" {
 		run(ctx, mgr, target, nPods, false)
 	} else {
-		log.Fatalf("unknown baseline %s\n", baseline)
+		klog.Fatalf("unknown baseline %s", baseline)
 	}
 }

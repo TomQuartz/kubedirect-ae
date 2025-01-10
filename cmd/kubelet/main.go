@@ -18,17 +18,13 @@ package main
 
 import (
 	"flag"
+	"log"
 
-	"k8s.io/klog/v2"
 	ctrl "sigs.k8s.io/controller-runtime"
 
 	// Kubedirect
 	benchutil "github.com/tomquartz/kubedirect-bench/pkg/util"
 )
-
-func init() {
-	klog.InitFlags(nil)
-}
 
 // NOTE: no ReplicaSet, just a template pod
 // measures the time from grpc call to pod ready
@@ -37,28 +33,30 @@ func init() {
 // 1. daemonset for the actual workload pods
 // 2. run the custom kubelets (override kubelet service annotation)
 func main() {
+	var debug bool
 	var baseline string
 	var target string
 	var node string
 	var nPods int
 
 	// NOTE: should create the deployments ahead of time
+	flag.BoolVar(&debug, "debug", false, "Enable debug log")
 	flag.StringVar(&baseline, "baseline", "kubelet", "Baseline for the experiment. Options: kubelet, dirigent")
 	flag.StringVar(&target, "target", "", "target ReplicaSet name")
 	flag.StringVar(&node, "node", "", "target node name")
 	flag.IntVar(&nPods, "n", 100, "Number of pods to scale up on the target node")
 	flag.Parse()
 
-	ctx := ctrl.SetupSignalHandler()
-	ctrl.SetLogger(klog.Background())
+	benchutil.SetupLogger(debug)
 
 	if target == "" {
-		klog.Fatalf("must specify target ReplicaSet")
+		log.Fatalf("must specify target ReplicaSet\n")
 	}
 	if node == "" {
-		klog.Fatalf("must specify target node")
+		log.Fatalf("must specify target node\n")
 	}
 
+	ctx := ctrl.SetupSignalHandler()
 	mgr := benchutil.NewManagerOrDie()
 
 	if baseline == "kubelet" {
@@ -66,6 +64,6 @@ func main() {
 	} else if baseline == "kd" {
 		run(ctx, mgr, node, target, nPods, false)
 	} else {
-		klog.Fatalf("unknown baseline %s", baseline)
+		log.Fatalf("unknown baseline %s\n", baseline)
 	}
 }

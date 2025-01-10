@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"log"
 	"sync"
 	"time"
 
@@ -113,13 +112,12 @@ func runKd(ctx context.Context, mgr manager.Manager, selector string, nPods int)
 		workload.CtrlListOptions...,
 	)
 	if err := uncachedClient.List(ctx, targets, listOpts...); err != nil {
-		log.Fatalf("Error listing scaling targets: %v\n", err)
+		klog.Fatalf("Error listing scaling targets: %v", err)
 	}
 	if len(targets.Items) == 0 {
-		log.Fatalf("No scaling targets\n")
+		klog.Fatalf("No scaling targets")
 	}
 
-	logger := klog.FromContext(ctx)
 	nPodsPerTarget := nPods / len(targets.Items)
 	var wg sync.WaitGroup
 	start := time.Now()
@@ -130,7 +128,7 @@ func runKd(ctx context.Context, mgr manager.Manager, selector string, nPods int)
 			defer wg.Done()
 			req := kdrpc.NewPodSchedulingRequest(kdClient, target, nPodsPerTarget)
 			if _, err := kdClient.Client().SchedulePods(ctx, req); err != nil {
-				logger.Error(err, "Error scaling up", "target", klog.KObj(target))
+				klog.Error(err, "Error scaling up", "target", klog.KObj(target))
 			}
 		}()
 	}
