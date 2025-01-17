@@ -1,0 +1,69 @@
+#! /usr/bin/env bash
+
+BASE_DIR=`realpath $(dirname $0)`
+cd $BASE_DIR
+. util.sh
+
+set -x
+
+RUN=${1:-"test"}
+
+# NOTE: assume k8s is up and running
+# usage: scale_pods.sh $RUN
+
+setup_dirs scale-pods || exit 0
+
+# N_PODS=(100 200 400 800)
+N_PODS=(100)
+n_nodes=100
+
+# usage: run_cmd $name $cmd $baselines...
+function run_cmd {
+    name=$1
+    cmd=$2
+    shift 2
+    for baseline in $@; do
+        for n_pods in ${N_PODS[@]}; do
+            eval "$cmd"
+            cp ./result.log $RESULTS/$name.$baseline.$n_pods.log
+            cp ./stderr.log $RESULTS/stderr/$name.$baseline.$n_pods.log
+            sleep 30
+        done
+    done
+}
+
+###################### e2e ######################
+cd $BASE_DIR/e2e
+cmd="./run.sh \$baseline 1 \$n_pods"
+
+# use default kubelet for k8s/kd
+run_cmd e2e "$cmd" k8s kd
+
+# use custom kubelet for k8s+/kd+
+custom_kubelet_up # watch
+run_cmd e2e "$cmd" k8s+ kd+
+custom_kubelet_down
+
+###################### breakdown: replicaset ######################
+cd $BASE_DIR/breakdown/replicaset
+cmd="./run.sh \$baseline 1 \$n_pods"
+run_cmd _rs "$cmd" k8s kd
+
+###################### breakdown: scheduler ######################
+cd $BASE_DIR/breakdown/scheduler
+cmd="./run.sh \$baseline \$n_pods"
+run_cmd _sched "$cmd" k8s kd
+
+###################### breakdown: kubelet ######################
+cd $BASE_DIR/breakdown/kubelet
+cmd="./run.sh \$baseline \$((n_pods / n_nodes))"
+
+# use default kubelet
+run_cmd _runtime "$cmd" kubelet
+
+# use custom kubelet
+custom_kubelet_up # watch
+run_cmd _runtime "$cmd" custom
+custom_kubelet_down
+
+###################### breakdown: endpoints ######################

@@ -19,7 +19,7 @@ function run_kind {
         debug=".debug"
         shift
     fi
-    nodes=${1:-"1"}
+    n_workers=${1:-"1"}
 
     KIND_CONFIG=kind$large$debug.yaml
 
@@ -37,7 +37,7 @@ function run_kind {
 
     # populate worker nodes
     cp $MANIFESTS_DIR/kind/$KIND_CONFIG $MANIFESTS_DIR/kind/_tmp_.$KIND_CONFIG
-    for ((i = 1; i <= nodes; i++)); do
+    for ((i = 1; i <= n_workers; i++)); do
         tee -a $MANIFESTS_DIR/kind/_tmp_.$KIND_CONFIG <<EOF >/dev/null
 - role: worker
   image: $kind_image_sha

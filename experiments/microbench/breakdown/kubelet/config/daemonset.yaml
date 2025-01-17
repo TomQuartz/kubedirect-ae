@@ -1,0 +1,26 @@
+# NOTE: this daemonset is NOT used by custom kubelet to generate reference status based on workload-pool label
+# only to ensure that the image is locally available on all nodes when using the default kubelet
+apiVersion: apps/v1
+kind: Daemonset
+metadata:
+  name: ${NAME}
+  labels:
+    app: ${NAME}
+    # kubedirect/workload-pool: ${WORKLOAD}
+spec:
+  selector:
+    matchLabels:
+      app: ${NAME}
+      # kubedirect/workload-pool: ${WORKLOAD}
+  template:
+    metadata:
+      labels:
+        app: ${NAME}
+        # kubedirect/workload-pool: ${WORKLOAD}
+    spec:
+      automountServiceAccountToken: false
+      containers:
+      - name: ${NAME}
+        image: ${IMAGE}
+        # NOTE: always use the latest image
+        imagePullPolicy: Always

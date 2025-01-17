@@ -32,4 +32,4 @@ COPY --from=BUILDER /server /server
 # Run the web service on container startup.
 ENTRYPOINT ["/server"]
 
-LABEL org.opencontainers.image.source=https://github.com/tomquartz/kubefuture
+LABEL org.opencontainers.image.source=https://github.com/tomquartz/kubedirect-bench

@@ -1,0 +1,32 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ${NAME}
+  labels:
+    app: ${NAME}
+    workload: ${WORKLOAD}
+    kubedirect/managed: "${MANAGED}"
+spec:
+  replicas: 0
+  selector:
+    matchLabels:
+      app: ${NAME}
+      workload: ${WORKLOAD}
+  template:
+    metadata:
+      labels:
+        app: ${NAME}
+        workload: ${WORKLOAD}
+        kubedirect/pod-lifecycle: ${LIFECYCLE}
+    spec:
+      automountServiceAccountToken: false
+      containers:
+      - name: ${NAME}
+        image: ${IMAGE}
+        # always use cached image
+        # NOTE: use crictl or a daemonset to pre-pull the image
+        imagePullPolicy: Never
+      tolerations:
+      - key: "kwok.x-k8s.io/node"
+        operator: "Exists"
+        effect: "NoSchedule"

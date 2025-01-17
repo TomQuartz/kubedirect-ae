@@ -35,11 +35,12 @@ var CtrlListOptions = []client.ListOption{
 var MetaV1ListOptions metav1.ListOptions
 
 func IsTraceWorkload(obj metav1.Object) bool {
-	return IsWorkload(obj) && obj.GetLabels()["traceID"] != ""
+	return IsWorkload(obj) && obj.GetLabels()["workload"] == "trace"
 }
 
 var CtrlListOptionsForTrace = []client.ListOption{
-	client.HasLabels{"workload", "app", "traceID"},
+	client.HasLabels{"workload", "app"},
+	client.MatchingLabels{"workload": "trace"},
 }
 
 var MetaV1ListOptionsForTrace metav1.ListOptions
@@ -55,14 +56,15 @@ func init() {
 	check(err)
 	requireApp, err := labels.NewRequirement("app", selection.Exists, nil)
 	check(err)
-	requireTraceID, err := labels.NewRequirement("traceID", selection.Exists, nil)
-	check(err)
 
 	MetaV1ListOptionsForTrace = metav1.ListOptions{
 		LabelSelector: labels.NewSelector().Add(*requireWorkload, *requireApp).String(),
 	}
 
+	requireTraceWorkload, err := labels.NewRequirement("workload", selection.Equals, []string{"trace"})
+	check(err)
+
 	MetaV1ListOptionsForTrace = metav1.ListOptions{
-		LabelSelector: labels.NewSelector().Add(*requireWorkload, *requireApp, *requireTraceID).String(),
+		LabelSelector: labels.NewSelector().Add(*requireTraceWorkload, *requireApp).String(),
 	}
 }

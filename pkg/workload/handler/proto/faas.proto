@@ -18,19 +18,15 @@ option go_package = "github.com/tomquartz/kubedirect-bench/pkg/workload/proto";
 package faas;
 
 service Executor {
-  // Remote execution via RPC call.
   rpc Execute (FaasRequest) returns (FaasReply) {}
 }
 
 message FaasRequest {
   string message = 1;           // Text message field (unused).
-  uint32 runtimeInMilliSec = 2; // Execution runtime [ms].
-  uint32 memoryInMebiBytes = 3; // Request memory usage [MiB].
+  uint32 runtimeMilliSec = 2; // Execution runtime [ms].
 }
 
 message FaasReply {
   string message = 1;             // Text message field (unused).
-  string functionStartTS = 2;     // Timestamp when the function starts processing a request.
-  uint32 durationInMicroSec = 3;  // Execution latency [µs].
-  uint32 memoryUsageInKb = 4;     // Memory usage [KB].
+  uint32 durationMicroSec = 2;  // Execution latency [µs].
 }

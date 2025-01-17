@@ -1,0 +1,11 @@
+# values copied from Dirigent AE
+# https://github.com/eth-easl/dirigent/blob/9715b857aa096cb65f904aacaa5b74ba130519d2/internal/control_plane/autoscaling/autoscaling.go#L78
+kpa:
+  tickIntervalSeconds: 2
+  stableWindowSeconds: 60
+  panicWindowPercentage: 10.0
+  panicThresholdPercentage: 200.0
+  MaxScaleUpRate: 1000.0
+  MaxScaleDownRate: 2.0
+  targetConcurrency: 1
+  scaleDownDelaySeconds: 60

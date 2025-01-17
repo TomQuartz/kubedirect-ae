@@ -32,9 +32,9 @@ func init() {
 
 // NOTE: use Deployment
 // k8s: no managed label
-// k8s+: no managed label + pod-lifecycle=dirigent label(in the pod template) + custom kubelet
+// k8s+: no managed label + pod-lifecycle=custom label(in the pod template) + custom kubelet
 // kd: managed label
-// kd+: managed label + pod-lifecycle=dirigent label(in the pod template) + custom kubelet
+// kd+: managed label + pod-lifecycle=custom label(in the pod template) + custom kubelet
 
 // custom kubelet:
 // 1. daemonset for the actual workload pods
@@ -46,7 +46,7 @@ func main() {
 
 	// NOTE: should create the deployments ahead of time
 	flag.StringVar(&baseline, "baseline", "k8s", "Baseline for the experiment. Options: k8s, k8s+, kd, kd+")
-	flag.StringVar(&selector, "selector", "", "Select Deployments with `workload=$selector` selector")
+	flag.StringVar(&selector, "selector", "test", "Select Deployments with `workload=$selector` selector")
 	flag.IntVar(&nPods, "n", 100, "Total number of pods to scale up")
 	flag.Parse()
 

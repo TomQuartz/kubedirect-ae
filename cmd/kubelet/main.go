@@ -18,52 +18,48 @@ package main
 
 import (
 	"flag"
-	"log"
+	"os"
+	"time"
 
+	"k8s.io/klog/v2"
 	ctrl "sigs.k8s.io/controller-runtime"
 
 	// Kubedirect
 	benchutil "github.com/tomquartz/kubedirect-bench/pkg/util"
 )
 
-// NOTE: no ReplicaSet, just a template pod
-// measures the time from grpc call to pod ready
-// kubelet: nothing special
-// dirigent: custom kubelet
-// 1. daemonset for the actual workload pods
-// 2. run the custom kubelets (override kubelet service annotation)
-func main() {
-	var debug bool
-	var baseline string
-	var target string
-	var node string
-	var nPods int
+func init() {
+	klog.InitFlags(nil)
+}
 
-	// NOTE: should create the deployments ahead of time
-	flag.BoolVar(&debug, "debug", false, "Enable debug log")
-	flag.StringVar(&baseline, "baseline", "kubelet", "Baseline for the experiment. Options: kubelet, dirigent")
-	flag.StringVar(&target, "target", "", "target ReplicaSet name")
-	flag.StringVar(&node, "node", "", "target node name")
-	flag.IntVar(&nPods, "n", 100, "Number of pods to scale up on the target node")
+func main() {
+	var node string
+	var simulate bool
+	var readyDelayMilliseconds int
+
+	flag.StringVar(&node, "node", "", "Node name this kubelet binds to. Default to hostname if not set")
+	flag.BoolVar(&simulate, "simulate", false, "If true, report pod readiness without binding to real containers")
+	flag.IntVar(&readyDelayMilliseconds, "ready-after", 100, "Delay in ms before kubelet reports pod ready")
 	flag.Parse()
 
-	benchutil.SetupLogger(debug)
-
-	if target == "" {
-		log.Fatalf("must specify target ReplicaSet\n")
-	}
 	if node == "" {
-		log.Fatalf("must specify target node\n")
+		hostName, err := os.Hostname()
+		if err != nil {
+			klog.Fatalf("Failed to get hostname: %v", err)
+		}
+		node = hostName
 	}
 
 	ctx := ctrl.SetupSignalHandler()
-	mgr := benchutil.NewManagerOrDie()
+	kubeClient := benchutil.NewClientsetOrDie()
 
-	if baseline == "kubelet" {
-		run(ctx, mgr, node, target, nPods, true)
-	} else if baseline == "kd" {
-		run(ctx, mgr, node, target, nPods, false)
-	} else {
-		log.Fatalf("unknown baseline %s\n", baseline)
+	kdServer := NewKubedirectServer(kubeClient, node).
+		WithReadyDelay(time.Duration(readyDelayMilliseconds) * time.Millisecond)
+	if simulate {
+		kdServer.Simulate()
+	}
+
+	if err := kdServer.ListenAndServe(ctx); err != nil {
+		klog.Fatalf("Failed to listen & serve: %v", err)
 	}
 }

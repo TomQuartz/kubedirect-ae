@@ -15,8 +15,8 @@ metadata:
     kubernetes.io/os: fake-linux
     kubernetes.io/role: agent
     node-role.kubernetes.io/agent: ""
-     # Set empty addr label to avoid dialing until we populate it
-    kubedirect/kubelet-service-addr: ""
+     # fake node must override kubelet service addr because the ip is not reachable
+    kubedirect/kubelet-service-override: "true"
 spec:
   taints: # Avoid scheduling real pods to fake Node
   - effect: NoSchedule

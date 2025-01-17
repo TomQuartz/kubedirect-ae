@@ -1,4 +1,4 @@
-.PHONY: proto build
+.PHONY: proto
 
 ROOT_DIR := $(shell dirname $(realpath $(lastword $(MAKEFILE_LIST))))
 

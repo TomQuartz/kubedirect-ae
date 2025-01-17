@@ -71,6 +71,25 @@ function build_k8s {
     build_kubelet
 }
 
+function build_bench {
+    echo "Building kubedirect benchmark image..."
+    tag=${tag:-"dev"}
+    bench_image=$MY_REPO/kubedirect-bench:$tag
+    
+    targets=("knative") # todo: AWS?
+    if [ "$#" -gt 0 ]; then
+        targets=("$@")
+    fi
+
+    cd $ROOT_DIR
+    for target in ${targets[@]}; do
+        docker build --build-arg TARGET_PLATFORM=$target \
+            -f $ROOT_DIR/pkg/workload/handler/Dockerfile \
+            -t $bench_image .
+        docker push $bench_image
+    done
+}
+
 function prune {
     docker system prune -f >/dev/null 2>&1
     docker volume prune -f >/dev/null 2>&1
@@ -89,6 +108,10 @@ k8s)
     ;;
 kubelet)
     build_kubelet
+    ;;
+bench)
+    shift
+    build_bench $@
     ;;
 prune)
     prune

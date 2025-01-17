@@ -30,7 +30,7 @@ func init() {
 	klog.InitFlags(nil)
 }
 
-// NOTE: use Deployment
+// NOTE: use Deployment, vary # Deployments (nPods = # Deployments)
 // k8s: no managed label
 // kd: mark managed
 func main() {

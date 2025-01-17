@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"os"
 	"sync"
 	"time"
 
@@ -56,11 +57,11 @@ func newKubeletLister(_ context.Context, uncachedClient client.Client, nodeName 
 		if err := uncachedClient.Get(ctx, client.ObjectKey{Name: nodeName}, node); err != nil {
 			return nil, err
 		}
-		if addr, ok := node.Annotations[kdrpc.KubeletServiceAddrAnnotation]; ok && addr != "" {
-			return []string{addr}, nil
-		}
-		if requireAddrAnnotation {
-			return nil, fmt.Errorf("missing Kubelet service address annotation")
+		if overrideAddr, mustOverride := kdrpc.GetKubeletServiceOverrideAddr(node); overrideAddr != "" {
+			return []string{overrideAddr}, nil
+		} else if mustOverride || requireAddrAnnotation {
+			klog.Fatalf("Missing Kubelet service address annotation on node %s", nodeName)
+			return nil, nil
 		}
 		nodeIPs := []string{}
 		for _, addr := range node.Status.Addresses {
@@ -155,6 +156,7 @@ func run(ctx context.Context, mgr manager.Manager, nodeName string, target strin
 		go func(i int) {
 			if _, err := kdClient.Client().BindPod(ctx, reqs[i]); err != nil {
 				klog.Error(err, "Error binding pod", "pod", podInfos[i])
+				os.Exit(1)
 			}
 		}(i)
 	}

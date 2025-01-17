@@ -1,0 +1,22 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ${NAME}-template
+  labels:
+    kubedirect/template: "true"
+    kubedirect/owner-name: ${NAME}
+  annotations:
+    # NOTE: to apply the labels to the generated pods, use the kubedirect/moved-labels annotation
+    kubedirect/moved-labels: '{"kubedirect/pod-lifecycle":"$LIFECYCLE"}'
+spec:
+  automountServiceAccountToken: false
+  containers:
+  - name: ${NAME}
+    image: ${IMAGE}
+    # always use cached image
+    # NOTE: use crictl or a daemonset to pre-pull the image
+    imagePullPolicy: Never
+  tolerations:
+  - key: "kwok.x-k8s.io/node"
+    operator: "Exists"
+    effect: "NoSchedule"

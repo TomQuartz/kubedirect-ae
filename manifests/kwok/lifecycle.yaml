@@ -42,6 +42,7 @@ spec:
       - image: {{`{{ .image | Quote }}`}}
         name: {{`{{ .name | Quote }}`}}
         ready: true
+        started: true
         restartCount: 0
         state:
           running:

@@ -1,3 +1,6 @@
 [submodule "kubernetes"]
 	path = kubernetes
 	url = git@github.com:TomQuartz/kubedirect-core.git
+[submodule "invitro"]
+	path = invitro
+	url = git@github.com:vhive-serverless/invitro.git

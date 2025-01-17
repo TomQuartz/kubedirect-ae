@@ -1,0 +1,51 @@
+# NOTE: we only use ksvc to compare against naive kn
+# so we always set managed label and use default kubelet for pod lifecycle
+apiVersion: serving.knative.dev/v1
+kind: Service
+# .metadata -> (corev1) service.metadata
+metadata:
+  name: ${NAME}
+  labels:
+    app: ${NAME}
+    workload: trace
+    kubedirect/managed: "true"
+spec:
+  template:
+    # .metadata -> deployment.metadata + deployment.spec.template.metadata
+    # .spec -> deployment.spec.template.spec
+    metadata:
+      labels:
+        app: ${NAME}
+        workload: trace
+        kubedirect/managed: "true"
+        # forwarded to pod template metadata
+        kubedirect/pod-lifecycle: kubelet
+      annotations:
+        serving.knative.dev/no-gc: "true"
+        autoscaling.knative.dev/metric: "concurrency"
+        autoscaling.knative.dev/target: "1"
+        autoscaling.knative.dev/target-utilization-percentage: "100"
+        autoscaling.knative.dev/scale-down-delay: "60s"
+        autoscaling.knative.dev/scale-to-zero-pod-retention-period: "5m"
+        autoscaling.knative.dev/window: "60s"
+        autoscaling.knative.dev/panic-window-percentage: "10.0"
+        autoscaling.knative.dev/panic-threshold-percentage: "200.0"
+    spec:
+      containerConcurrency: 1
+      automountServiceAccountToken: false # TODO: ?
+      containers:
+      - name: ${NAME}
+        image: ${IMAGE}
+        # always use cached image
+        # NOTE: use crictl or a daemonset to pre-pull the image
+        imagePullPolicy: Never
+        ports:
+        - name: h2c
+          containerPort: 80
+        env:
+        - name: ITERATIONS_MULTIPLIER
+          # values copied from Dirigent AE
+          # https://github.com/eth-easl/dirigent/blob/9715b857aa096cb65f904aacaa5b74ba130519d2/artifact_evaluation/azure_500/dirigent/azure_500/dirigent.csv
+          value: "155"
+        - name: FUNCTION_TYPE
+          value: "trace"

@@ -1,0 +1,75 @@
+#! /usr/bin/env bash
+
+BASE_DIR=`realpath $(dirname $0)`
+cd $BASE_DIR
+. util.sh
+
+set -x
+
+RUN=${1:-"test"}
+
+# NOTE: assume k8s is up and running
+# NOTE: we only test the scalability of kd+ using custom kubelet and kwok nodes
+# usage: scale_nodes.sh $RUN
+
+setup_dirs scale-nodes || exit 0
+
+# N_NODES=(500 1000 1500 2000)
+N_NODES=(500)
+n_pods_per_node=5
+
+# usage: run_cmd_with_nodes #nodes $name $cmd $baselines...
+function run_cmd_with_nodes {
+    n_nodes=$1
+    n_pods=$((n_nodes * n_pods_per_node))
+    name=$2
+    cmd=$3
+    shift 3
+    for baseline in $@; do
+        eval "$cmd"
+        cp ./result.log $RESULTS/$name.$baseline.$n_nodes.log
+        cp ./stderr.log $RESULTS/stderr/$name.$baseline.$n_nodes.log
+        sleep 30
+    done
+}
+
+# assume custom kubelet and kwok nodes are up
+function run_all_with_nodes {
+
+n_nodes=$1
+shift
+###################### e2e ######################
+cd $BASE_DIR/e2e
+cmd="./run.sh \$baseline 1 \$n_pods"
+# use custom kubelet for kd+
+run_cmd_with_nodes $n_nodes e2e "$cmd" kd+
+
+###################### breakdown: replicaset ######################
+cd $BASE_DIR/breakdown/replicaset
+cmd="./run.sh \$baseline 1 \$n_pods"
+run_cmd_with_nodes $n_nodes _rs "$cmd" kd
+
+###################### breakdown: scheduler ######################
+cd $BASE_DIR/breakdown/scheduler
+cmd="./run.sh \$baseline \$n_pods"
+run_cmd_with_nodes $n_nodes _sched "$cmd" kd
+
+###################### breakdown: kubelet ######################
+cd $BASE_DIR/breakdown/kubelet
+cmd="./run.sh \$baseline \$((n_pods / n_nodes))"
+# use custom kubelet
+run_cmd_with_nodes $n_nodes _runtime "$cmd" custom
+
+###################### breakdown: endpoints ######################
+
+}
+
+custom_kubelet_up # watch
+
+for n_nodes in ${N_NODES[@]}; do
+    kwok_node_up $n_nodes
+    run_all_with_nodes $n_nodes
+    kwok_node_down
+done
+
+custom_kubelet_down

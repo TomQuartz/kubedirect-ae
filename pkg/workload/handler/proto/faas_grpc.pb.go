@@ -18,7 +18,6 @@ const _ = grpc.SupportPackageIsVersion7
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type ExecutorClient interface {
-	// Remote execution via RPC call.
 	Execute(ctx context.Context, in *FaasRequest, opts ...grpc.CallOption) (*FaasReply, error)
 }
 
@@ -43,7 +42,6 @@ func (c *executorClient) Execute(ctx context.Context, in *FaasRequest, opts ...g
 // All implementations must embed UnimplementedExecutorServer
 // for forward compatibility
 type ExecutorServer interface {
-	// Remote execution via RPC call.
 	Execute(context.Context, *FaasRequest) (*FaasReply, error)
 	mustEmbedUnimplementedExecutorServer()
 }

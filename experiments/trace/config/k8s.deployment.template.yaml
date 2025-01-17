@@ -1,0 +1,40 @@
+# NOTE: we only use this deployment template run the dirigent dataplane
+# so we always use custom kubelet for pod lifecycle but may vary the managed label
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ${NAME}
+  labels:
+    app: ${NAME}
+    workload: trace
+spec:
+  replicas: 0
+  selector:
+    matchLabels:
+      app: ${NAME}
+      workload: trace
+  template:
+    metadata:
+      labels:
+        app: ${NAME}
+        workload: trace
+        # managed by custom kubelet
+        kubedirect/pod-lifecycle: custom
+    spec:
+      automountServiceAccountToken: false
+      containers:
+      - name: ${NAME}
+        image: ${IMAGE}
+        # always use cached image
+        # NOTE: use crictl or a daemonset to pre-pull the image
+        imagePullPolicy: Never
+        ports:
+        - name: h2c
+          containerPort: 80
+        env:
+        - name: ITERATIONS_MULTIPLIER
+          # values copied from Dirigent AE
+          # https://github.com/vhive-serverless/invitro/blob/0b0d6d7ee59e820a2472a568c89740e0ad157b69/workloads/container/trace_func_go.yaml#L31
+          value: "102"
+        - name: FUNCTION_TYPE
+          value: "trace"

@@ -1,0 +1,11 @@
+# values copied from Dirigent AE
+# https://github.com/vhive-serverless/invitro/blob/40546b63cade9113a8c27e5632f39b03aa38333c/pkg/driver/deployment.go#L110
+kpa:
+  tickIntervalSeconds: 2
+  stableWindowSeconds: 60
+  panicWindowPercentage: 10.0
+  panicThresholdPercentage: 200.0
+  MaxScaleUpRate: 1000.0
+  MaxScaleDownRate: 2.0
+  Async: true
+  scaleDownDelaySeconds: 60

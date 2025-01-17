@@ -1,0 +1,34 @@
+apiVersion: apps/v1
+kind: Daemonset
+metadata:
+  name: ${NAME}
+  labels:
+    app: ${NAME}
+    kubedirect/workload-pool: trace
+spec:
+  selector:
+    matchLabels:
+      app: ${NAME}
+      kubedirect/workload-pool: trace
+  template:
+    metadata:
+      labels:
+        app: ${NAME}
+        kubedirect/workload-pool: trace
+    spec:
+      automountServiceAccountToken: false
+      containers:
+      - name: ${NAME}
+        image: ${IMAGE}
+        # NOTE: always use the latest image
+        imagePullPolicy: Always
+        ports:
+        - name: h2c
+          containerPort: 80
+        env:
+        - name: ITERATIONS_MULTIPLIER
+          # values copied from Dirigent AE
+          # https://github.com/vhive-serverless/invitro/blob/0b0d6d7ee59e820a2472a568c89740e0ad157b69/workloads/container/trace_func_go.yaml#L31
+          value: "102"
+        - name: FUNCTION_TYPE
+          value: "trace"

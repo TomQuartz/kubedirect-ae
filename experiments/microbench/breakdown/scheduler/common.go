@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"os"
 	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -135,7 +136,8 @@ func run(ctx context.Context, mgr manager.Manager, target string, nPods int, fal
 
 	start := time.Now()
 	if _, err := kdClient.Client().SchedulePods(ctx, req); err != nil {
-		klog.Error(err, "Error scaling up", "target", klog.KObj(fakeReplicaSet))
+		klog.Error(err, "Error scheduling pods", "target", klog.KObj(fakeReplicaSet))
+		os.Exit(1)
 	}
 
 	fmt.Printf("total: %v us\n", time.Since(start).Microseconds())

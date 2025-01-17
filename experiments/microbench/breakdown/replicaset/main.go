@@ -31,8 +31,8 @@ func init() {
 }
 
 // NOTE: use ReplicaSet
-// k8s: no managed label
-// kd: mark managed
+// k8s: no managed label, vary nPods
+// kd: mark managed, vary nPods and/or # ReplicaSets
 func main() {
 	var baseline string
 	var selector string

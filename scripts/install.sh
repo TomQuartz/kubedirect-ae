@@ -115,8 +115,6 @@ EOF
     sudo systemctl enable containerd
     sudo systemctl restart containerd
 
-    # increase systemd limits for docker and containerd
-
     # install k8s
     curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.31/deb/Release.key | sudo gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg --yes
     sudo chmod 644 /etc/apt/keyrings/kubernetes-apt-keyring.gpg # allow unprivileged APT programs to read this keyring
@@ -132,9 +130,12 @@ EOF
 
     sudo apt install -y python3-pip
     python3 -m pip install --upgrade pip
-    pip3 install numpy scipy kubernetes
+    pip3 install numpy scipy
     pip3 install --upgrade pyyaml
     pip3 install parse numpy matplotlib
+
+    sudo apt install -y git-lfs
+    git lfs install
 
     sudo sysctl --system
 }

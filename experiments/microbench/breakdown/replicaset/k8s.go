@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"os"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -98,8 +99,7 @@ func (m *ReplicaSetMonitor) SetupWithManager(ctx context.Context, mgr ctrl.Manag
 }
 
 func (m *ReplicaSetMonitor) FilterEvent(object client.Object) bool {
-	labels := object.GetLabels()
-	return labels["app"] != "" && labels["workload"] == m.selector
+	return workload.IsWorkload(object) && object.GetLabels()["workload"] == m.selector
 }
 
 func (m *ReplicaSetMonitor) OnReplicaSetCreated(kdLogger *kdutil.Logger, rs *appsv1.ReplicaSet) {
@@ -110,11 +110,11 @@ func (m *ReplicaSetMonitor) OnReplicaSetCreated(kdLogger *kdutil.Logger, rs *app
 func (m *ReplicaSetMonitor) OnReplicaSetDeleted(kdLogger *kdutil.Logger, rs *appsv1.ReplicaSet) {
 	key := workload.KeyFromObject(rs)
 	kdLogger.Info("Deleted", "key", key)
-	m.expectations.Del(key, func(exp *Expectation) {
+	if exp, _ := m.expectations.Del(key); exp != nil {
 		if exp.Done() {
 			kdLogger.Info("Force done on deletion", "key", key)
 		}
-	})
+	}
 }
 
 func (m *ReplicaSetMonitor) OnReplicaSetUpdated(kdLogger *kdutil.Logger, old, new *appsv1.ReplicaSet) {
@@ -125,11 +125,11 @@ func (m *ReplicaSetMonitor) OnReplicaSetUpdated(kdLogger *kdutil.Logger, old, ne
 		return
 	}
 	if new.Status.Replicas == *new.Spec.Replicas && *new.Spec.Replicas == int32(exp.Desired()) {
-		m.expectations.Del(key, func(exp *Expectation) {
+		if exp, _ := m.expectations.Del(key); exp != nil {
 			if exp.Done() {
 				kdLogger.Info("Expectation met", "key", key)
 			}
-		})
+		}
 	}
 }
 
@@ -166,7 +166,12 @@ func runK8s(ctx context.Context, mgr manager.Manager, selector string, nPods int
 	if len(targets.Items) == 0 {
 		klog.Fatalf("No scaling targets")
 	}
+
 	nPodsPerTarget := nPods / len(targets.Items)
+	if nPodsPerTarget == 0 {
+		klog.Warning("The number of pods scaled per target is 0, resetting to 1")
+		nPodsPerTarget = 1
+	}
 
 	wg := &sync.WaitGroup{}
 	wg.Add(len(targets.Items))
@@ -182,6 +187,7 @@ func runK8s(ctx context.Context, mgr manager.Manager, selector string, nPods int
 		go func() {
 			if err := mgrClient.Update(ctx, target); err != nil {
 				klog.Error(err, "Error scaling up", "target", klog.KObj(target))
+				os.Exit(1)
 			}
 		}()
 	}

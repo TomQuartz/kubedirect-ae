@@ -30,10 +30,10 @@ func init() {
 	klog.InitFlags(nil)
 }
 
-// NOTE: no ReplicaSet, just a template pod
+// NOTE: no ReplicaSet, just a template pod (no need to mark managed)
 // measures the time from grpc call to pod ready
 // kubelet: nothing special
-// dirigent: custom kubelet, template pod must have pod-lifecycle=dirigent label
+// dirigent: custom kubelet, template pod must have pod-lifecycle=custom label
 // 1. daemonset for the actual workload pods
 // 2. run the custom kubelets (override kubelet service annotation)
 func main() {
@@ -43,7 +43,7 @@ func main() {
 	var nPods int
 
 	// NOTE: should create the deployments ahead of time
-	flag.StringVar(&baseline, "baseline", "kubelet", "Baseline for the experiment. Options: kubelet, dirigent")
+	flag.StringVar(&baseline, "baseline", "kubelet", "Baseline for the experiment. Options: kubelet, custom")
 	flag.StringVar(&target, "target", "", "target ReplicaSet name")
 	flag.StringVar(&node, "node", "", "target node name")
 	flag.IntVar(&nPods, "n", 100, "Number of pods to scale up on the target node")
@@ -63,7 +63,7 @@ func main() {
 
 	if baseline == "kubelet" {
 		run(ctx, mgr, node, target, nPods, true)
-	} else if baseline == "kd" {
+	} else if baseline == "custom" {
 		run(ctx, mgr, node, target, nPods, false)
 	} else {
 		klog.Fatalf("unknown baseline %s", baseline)

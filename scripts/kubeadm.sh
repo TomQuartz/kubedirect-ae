@@ -16,7 +16,7 @@ function run_kubeadm {
         debug=".debug"
         shift
     fi
-    nodes=$1
+    n_workers=$1
 
     INIT_CONFIG=init$large$debug.yaml
     CNI_CONFIG=flannel$large.yaml
@@ -46,7 +46,7 @@ function run_kubeadm {
     API_ENDPOINT=$api_endpoint TOKEN=$token TOKEN_HASH=$token_hash \
         envsubst < $MANIFESTS_DIR/kubeadm/$JOIN_CONFIG > $MANIFESTS_DIR/kubeadm/_tmp_.$JOIN_CONFIG
     
-    for worker in $(workers $nodes); do
+    for worker in $(workers $n_workers); do
         echo "joining $worker"
         scp $MANIFESTS_DIR/kubeadm/_tmp_.$JOIN_CONFIG $worker:~/.kubedirect/kubeadm.join.yaml
         ssh $worker -- sudo kubeadm join $api_endpoint --config ~/.kubedirect/kubeadm.join.yaml
@@ -54,7 +54,7 @@ function run_kubeadm {
     done
 
     # cp kubeconfig to all workers
-    for worker in $(workers $nodes); do
+    for worker in $(workers $n_workers); do
         ssh $worker -- rm -rf ~/.kube
         scp -r $HOME/.kube $worker:~
     done
@@ -87,7 +87,7 @@ function watch_control_plane {
     # kube-scheduler
     nohup kubectl logs -n kube-system kube-scheduler-$master_node --follow >$WATCH_LOG/scheduler.log 2>&1 &
     pid=$!
-    echo "$!: scheduler -> $WATCH_LOG/scheduler.log"
+    echo "$pid: scheduler -> $WATCH_LOG/scheduler.log"
     echo $pid >> $WATCH_DIR/pids
 }
 
@@ -100,7 +100,7 @@ function watch_kubelet {
     for worker in $(workers $1); do
         nohup ssh $worker "sudo journalctl -u kubelet --follow" >$WATCH_LOG/kubelet-$worker.log 2>&1 &
         pid=$!
-        echo "$pid: $1 kubelet -> $WATCH_LOG/kubelet-$worker.log"
+        echo "$pid: $worker kubelet -> $WATCH_LOG/kubelet-$worker.log"
         echo $pid >> $WATCH_DIR/pids
     done
 }

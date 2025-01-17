@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"os"
 	"sync"
 	"time"
 
@@ -99,7 +100,7 @@ func (m *PodMonitor) SetupWithManager(ctx context.Context, mgr ctrl.Manager) err
 }
 
 func (m *PodMonitor) FilterEvent(object client.Object) bool {
-	return kdutil.IsManaged(object) && object.GetLabels()["workload"] == m.selector
+	return workload.IsWorkload(object) && object.GetLabels()["workload"] == m.selector
 }
 
 func (m *PodMonitor) HandlePodEvent(kdLogger *kdutil.Logger, old, new *corev1.Pod) {
@@ -146,10 +147,10 @@ func run(ctx context.Context, mgr manager.Manager, selector string, nPods int) {
 		workload.CtrlListOptions...,
 	)
 	if err := mgrClient.List(ctx, targets, listOpts...); err != nil {
-		klog.Fatalf("Error listing Deployments: %v", err)
+		klog.Fatalf("Error listing deployments: %v", err)
 	}
 	if len(targets.Items) == 0 {
-		klog.Fatal("No Deployment selected")
+		klog.Fatal("No deployment selected")
 	}
 
 	nPodsPerTarget := nPods / len(targets.Items)
@@ -174,6 +175,7 @@ func run(ctx context.Context, mgr manager.Manager, selector string, nPods int) {
 		go func() {
 			if err := mgrClient.Update(ctx, target); err != nil {
 				klog.Error(err, "Error scaling up", "target", klog.KObj(target))
+				os.Exit(1)
 			}
 		}()
 	}

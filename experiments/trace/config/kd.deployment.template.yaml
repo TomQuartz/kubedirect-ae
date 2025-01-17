@@ -1,0 +1,41 @@
+# NOTE: we only use this deployment template run the dirigent dataplane
+# so we always use custom kubelet for pod lifecycle but may vary the managed label
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ${NAME}
+  labels:
+    app: ${NAME}
+    workload: trace
+    kubedirect/managed: "true"
+spec:
+  replicas: 0
+  selector:
+    matchLabels:
+      app: ${NAME}
+      workload: trace
+  template:
+    metadata:
+      labels:
+        app: ${NAME}
+        workload: trace
+        # managed by custom kubelet
+        kubedirect/pod-lifecycle: custom
+    spec:
+      automountServiceAccountToken: false
+      containers:
+      - name: ${NAME}
+        image: ${IMAGE}
+        # always use cached image
+        # NOTE: use crictl or a daemonset to pre-pull the image
+        imagePullPolicy: Never
+        ports:
+        - name: h2c
+          containerPort: 80
+        env:
+        - name: ITERATIONS_MULTIPLIER
+          # values copied from Dirigent AE
+          # https://github.com/eth-easl/dirigent/blob/9715b857aa096cb65f904aacaa5b74ba130519d2/artifact_evaluation/azure_500/dirigent/azure_500/dirigent.csv
+          value: "155"
+        - name: FUNCTION_TYPE
+          value: "trace"

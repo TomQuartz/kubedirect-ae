@@ -1,0 +1,406 @@
+package main
+
+import (
+	"context"
+	"fmt"
+	"time"
+
+	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	utilerrors "k8s.io/apimachinery/pkg/util/errors"
+	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
+	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/client-go/informers"
+	clientset "k8s.io/client-go/kubernetes"
+	corelisters "k8s.io/client-go/listers/core/v1"
+	"k8s.io/client-go/tools/cache"
+	"k8s.io/client-go/util/workqueue"
+	"k8s.io/klog/v2"
+
+	// Kubedirect
+	kdctx "k8s.io/kubedirect/pkg/context"
+	kdrpc "k8s.io/kubedirect/pkg/rpc"
+	kdproto "k8s.io/kubedirect/pkg/rpc/proto"
+	kdutil "k8s.io/kubedirect/pkg/util"
+)
+
+const (
+	CustomKubeletServicePort  = ":25010"
+	PodLifecycleManagerCustom = "custom"
+	nWorkers                  = 64
+	WorkloadPoolLabel         = "kubedirect/workload-pool"
+)
+
+type PendingPod struct {
+	Namespace string
+	Name      string
+	inMemPod  *corev1.Pod
+}
+
+func NewPendingPodFromAPIServer(pod *corev1.Pod) PendingPod {
+	return PendingPod{
+		Namespace: pod.Namespace,
+		Name:      pod.Name,
+	}
+}
+
+func NewPendingPodFromInMemCache(pod *corev1.Pod) PendingPod {
+	return PendingPod{
+		Namespace: pod.Namespace,
+		Name:      pod.Name,
+		inMemPod:  pod,
+	}
+}
+
+func (p *PendingPod) String() string {
+	return fmt.Sprintf("%s/%s", p.Namespace, p.Name)
+}
+
+type KubedirectServer struct {
+	kdLogger  *kdutil.Logger
+	serverHub *kdrpc.ServerHub
+	kdproto.UnimplementedKubeletServer
+	// k8s client and informer
+	client  clientset.Interface
+	factory informers.SharedInformerFactory
+	// for listing template/managed pods in rpc handlers
+	nodeLister corelisters.NodeLister
+	podLister  corelisters.PodLister
+	// pod queue
+	// NOTE: for the queue to deduplicate, we should pass the struct by value
+	// however, in-mem pod are still passed by pointer, so there is a chance of duplicate
+	queue workqueue.TypedRateLimitingInterface[PendingPod]
+	// in-mem pod cache
+	// following the default kubelet, we index by pod name because name is unique for managed pod
+	inMemCache *kdctx.PodInfoCache
+	// Nodename of this kubelet
+	nodeName string
+	// delay till pod is ready
+	readyDelay time.Duration
+	// NOTE: unlike the in-mem cache that only handles managed pods with unique names
+	// this timer map also handle k8s-originated pods with possibly duplicate names modulo namespaces
+	// so we index with namespace/name
+	readyTimers *kdutil.SharedMap[time.Time]
+	// whether to bind to real containers. if false, just simulate ready delay
+	simulate bool
+}
+
+func NewKubedirectServer(c clientset.Interface, nodeName string) *KubedirectServer {
+	ctx := context.TODO()
+	logger := klog.FromContext(ctx)
+	kdLogger := kdutil.NewLogger(logger)
+
+	factory := informers.NewSharedInformerFactory(c, 0)
+	kdServer := &KubedirectServer{
+		kdLogger:   kdLogger,
+		client:     c,
+		factory:    factory,
+		nodeLister: factory.Core().V1().Nodes().Lister(),
+		podLister:  factory.Core().V1().Pods().Lister(),
+		queue: workqueue.NewTypedRateLimitingQueueWithConfig(
+			workqueue.DefaultTypedControllerRateLimiter[PendingPod](),
+			workqueue.TypedRateLimitingQueueConfig[PendingPod]{Name: "custom_kubelet"},
+		),
+		nodeName:    nodeName,
+		inMemCache:  kdctx.NewPodInfoCache(),
+		readyTimers: kdutil.NewSharedMap[time.Time](),
+	}
+	kdServer.serverHub = kdrpc.NewServerHub(kdServer)
+
+	if _, err := factory.Core().V1().Pods().Informer().AddEventHandler(cache.FilteringResourceEventHandler{
+		FilterFunc: func(obj interface{}) bool {
+			switch t := obj.(type) {
+			case *corev1.Pod:
+				// both managed label and persistent label are required to be considered managed
+				// when materializing in-mem pods, we always set the persistent label and nodename
+				return kdServer.enqueueFilter(t)
+			case cache.DeletedFinalStateUnknown:
+				if p, ok := t.Obj.(*corev1.Pod); ok {
+					return kdServer.enqueueFilter(p)
+				}
+				kdLogger.WARN(fmt.Sprintf("unable to convert deleted object %T to *corev1.Pod", obj))
+				return false
+			default:
+				kdLogger.WARN(fmt.Sprintf("unable to recognize object %T", obj))
+				return false
+			}
+		},
+		// the persisted pod is removed from inMemCache in all cases
+		Handler: cache.ResourceEventHandlerFuncs{
+			AddFunc: func(pod interface{}) {
+				kdServer.handlePodEvent(pod, false)
+			},
+			UpdateFunc: func(oldPod, newPod interface{}) {
+				kdServer.handlePodEvent(newPod, false)
+			},
+			DeleteFunc: func(pod interface{}) {
+				kdServer.handlePodEvent(pod, true)
+			},
+		},
+	},
+	); err != nil {
+		kdLogger.Error(err, "Failed to add pod event handlers")
+		return nil
+	}
+
+	// NOTE: unlike scheduler, we don't need to explicitly handle template pod deletion events
+	// the exposed pods will be deleted by system-wide GC and notified through the above handler
+
+	return kdServer
+}
+
+func (s *KubedirectServer) WithReadyDelay(delay time.Duration) *KubedirectServer {
+	s.readyDelay = delay
+	return s
+}
+
+func (s *KubedirectServer) Simulate() {
+	s.simulate = true
+}
+
+// the managed label is not required because this server also handles k8s-originated pods
+// NOTE: we cannot directly filter on spec.NodeName because there can be kubelet service delegation
+func (s *KubedirectServer) enqueueFilter(pod *corev1.Pod) bool {
+	return pod.Spec.NodeName != "" && pod.Labels[kdutil.PodLifecycleManagerLabel] == PodLifecycleManagerCustom
+}
+
+func (s *KubedirectServer) isResponsibleFor(pod *corev1.Pod) (bool, error) {
+	if pod.Spec.NodeName == s.nodeName {
+		return true, nil
+	}
+	if pod.Spec.NodeName == "" {
+		return false, nil
+	}
+	thisNode, thisErr := s.nodeLister.Get(s.nodeName)
+	thatNode, thatErr := s.nodeLister.Get(pod.Spec.NodeName)
+	if thisErr != nil || thatErr != nil {
+		return false, fmt.Errorf("failed to get node object: %v", utilerrors.NewAggregate([]error{thisErr, thatErr}))
+	}
+	return thisNode.Labels[kdrpc.KubeletServiceAddrAnnotation] == thatNode.Labels[kdrpc.KubeletServiceAddrAnnotation], nil
+}
+
+func (s *KubedirectServer) unwrapPodObject(kdLogger *kdutil.Logger, obj interface{}) *corev1.Pod {
+	if obj == nil {
+		return nil
+	}
+	pod, ok := obj.(*corev1.Pod)
+	if !ok {
+		kdLogger.Error(nil, "Cannot convert to *corev1.Pod", "obj", obj)
+		return nil
+	}
+	if !s.enqueueFilter(pod) {
+		kdLogger.WARN("Not interested in pod", "pod", klog.KObj(pod))
+		return nil
+	}
+	return pod
+}
+
+func (s *KubedirectServer) handlePodEvent(obj interface{}, isDelete bool) {
+	kdLogger := s.kdLogger.WithHeader("PodEvent")
+	pod := s.unwrapPodObject(kdLogger, obj)
+	if pod == nil {
+		return
+	}
+	pending := NewPendingPodFromAPIServer(pod)
+	// NOTE: there is no clean up to do(except clearing timers) after deletion of the api object
+	// because the custom kubelet simply binds a pod to an existing reference pod from workload pool
+	if !isDelete {
+		s.queue.Add(pending)
+	} else {
+		s.readyTimers.Del(pending.String())
+	}
+	// NOTE: the custom kubelet handles both kd-managed and k8s-originated pods
+	// but only managed ones are added to in-mem cache
+	if kdutil.IsManaged(pod) && kdutil.IsPersistent(pod) {
+		// NOTE: index by pod name
+		oldInfo, _ := s.inMemCache.Del(pod.Name)
+		if oldInfo != nil && kdLogger.V(2).Enabled() {
+			kdLogger.DEBUG(fmt.Sprintf("Seen pod %s, remove from in-mem cache", pod.Name), "old", oldInfo, "new", kdctx.NewPodInfoFromPod(pod))
+		}
+	}
+}
+
+func (s *KubedirectServer) SyncPod(ctx context.Context, pending PendingPod) error {
+	logger := klog.FromContext(ctx)
+	kdLogger := kdutil.NewLogger(logger).WithHeader("SyncPod").WithValues("pod", pending)
+
+	var pod *corev1.Pod
+	isInMem := pending.inMemPod != nil
+	apiPod, err := s.podLister.Pods(pending.Namespace).Get(pending.Name)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			if isInMem {
+				pod = pending.inMemPod
+			} else {
+				kdLogger.V(2).DEBUG("API pod not found, will ignore")
+				return nil
+			}
+		} else {
+			kdLogger.Error(err, "Failed to get API pod")
+			return err
+		}
+	} else {
+		// we always api pod if present, even if pending is from in-mem cache
+		pod = apiPod.DeepCopy()
+		isInMem = false
+	}
+
+	// check if the pod is bound to this kubelet
+	// NOTE: this step is required because enqueueFilter only checks the lifecycle label
+	if ok, err := s.isResponsibleFor(pod); err != nil {
+		return err
+	} else if !ok {
+		return nil
+	}
+
+	// expose in-mem pod
+	// NOTE: ExposeManagedPod may be called multiple times for the same pod
+	// but creation can only succeed once
+	if isInMem {
+		kdLogger.Info("Exposing in-mem pod")
+		go s.exposeManagedPod(ctx, kdLogger, pod)
+	}
+
+	// check api pod status
+	// NOTE: deletion timestamp can only be set on api pods; in-mem pods only occur during creation
+	// NOTE: we can immediately remove the api object once deletion is requested
+	// because the custom kubelet simply binds a pod to an existing reference pod from workload pool
+	if pod.DeletionTimestamp != nil {
+		kdLogger.V(1).Info("Deleting pod")
+		if err := s.client.CoreV1().Pods(pod.Namespace).Delete(ctx, pod.Name, metav1.DeleteOptions{
+			GracePeriodSeconds: new(int64), // Set gracePeriodSeconds to 0 to force delete
+		}); err != nil && !apierrors.IsNotFound(err) {
+			kdLogger.Error(err, "Failed to delete pod")
+			return err
+		}
+		s.readyTimers.Del(pending.String())
+		return nil
+	}
+	// api pod only
+	if !kdutil.IsPodActive(pod) {
+		kdLogger.V(2).DEBUG("Skipping inactive pod")
+		s.readyTimers.Del(pending.String())
+		return nil
+	}
+	// api pod only
+	if kdutil.IsPodReady(pod) {
+		kdLogger.V(2).DEBUG("Skipping ready pod")
+		s.readyTimers.Del(pending.String())
+		return nil
+	}
+
+	// check ready delay
+	readyTime, _ := s.readyTimers.GetOrCreate(pending.String(), func() time.Time {
+		return time.Now().Add(s.readyDelay)
+	})
+	if waitTime := time.Until(readyTime); waitTime > 0 {
+		kdLogger.V(1).DEBUG(fmt.Sprintf("Wait %.2fms til ready", waitTime.Seconds()*1e3))
+		s.queue.AddAfter(pending, waitTime)
+		return nil
+	}
+
+	// update pod status to ready
+	// if pod is still in-mem at this point, we need to wait till it is exposed
+	if isInMem {
+		kdLogger.WARN("In-mem pod not exposed, will update status later")
+		// no need for explicit requeue because the informer will do so upon pod creation event
+		return nil
+	}
+
+	kdLogger.Info("Marking pod as ready")
+	// get reference pod status
+	var refStatus *corev1.PodStatus
+	if s.simulate {
+		refStatus = s.simulateRefPodStatus(pod)
+	} else {
+		if ref, err := s.getRefPodStatus(pod); err != nil {
+			kdLogger.Error(err, "Failed to get reference pod status")
+			return err
+		} else {
+			refStatus = ref
+		}
+	}
+
+	if err := s.markPodReady(ctx, pod, refStatus); err != nil {
+		kdLogger.Error(err, "Failed to mark pod as ready")
+		// notfound/conflict errs would be handled after requeue
+		return err
+	}
+	// readyTimers would be removed once the updated status triggers the informer event handler
+	return nil
+}
+
+func (s *KubedirectServer) processNextItem(ctx context.Context) bool {
+	pending, shutdown := s.queue.Get()
+	if shutdown {
+		return false
+	}
+	defer s.queue.Done(pending)
+
+	err := s.SyncPod(ctx, pending)
+	if err == nil {
+		s.queue.Forget(pending)
+		return true
+	}
+	utilruntime.HandleErrorWithContext(ctx, err, fmt.Sprintf("Erroring syncing %v: %v", pending, err))
+	s.queue.AddRateLimited(pending)
+
+	return true
+}
+
+func (s *KubedirectServer) workerLoop(ctx context.Context) {
+	for s.processNextItem(ctx) {
+	}
+}
+
+func (s *KubedirectServer) ListenAndServe(ctx context.Context) error {
+	defer utilruntime.HandleCrashWithContext(ctx)
+	defer s.queue.ShutDown()
+
+	logger := klog.FromContext(ctx)
+	kdLogger := kdutil.NewLogger(logger).WithHeader("Main")
+
+	s.factory.Start(ctx.Done())
+	for k, ok := range s.factory.WaitForCacheSync(ctx.Done()) {
+		if !ok {
+			return fmt.Errorf("error syncing %v", k)
+		}
+	}
+
+	publishServiceAddr := func(ctx context.Context) (bool, error) {
+		node, err := s.nodeLister.Get(s.nodeName)
+		if apierrors.IsNotFound(err) {
+			return false, fmt.Errorf("node %s not found", s.nodeName)
+		}
+		var hostIP string
+		for _, addr := range node.Status.Addresses {
+			if addr.Type == corev1.NodeInternalIP {
+				hostIP = addr.Address
+				break
+			}
+		}
+		if hostIP == "" {
+			return false, fmt.Errorf("node %s has no internal IP", s.nodeName)
+		}
+		node = node.DeepCopy()
+		if node.Annotations == nil {
+			node.Annotations = make(map[string]string)
+		}
+		node.Annotations[kdrpc.KubeletServiceAddrAnnotation] = hostIP + CustomKubeletServicePort
+		if _, err := s.client.CoreV1().Nodes().Update(ctx, node, metav1.UpdateOptions{}); err != nil {
+			kdLogger.Error(err, fmt.Sprintf("Failed to update node %v", s.nodeName))
+			return false, nil
+		}
+		return true, nil
+	}
+	if err := wait.PollUntilContextCancel(ctx, time.Second, true, publishServiceAddr); err != nil {
+		return fmt.Errorf("failed to publish custom kubelet service address: %v", err)
+	}
+
+	for i := 0; i < nWorkers; i++ {
+		go wait.UntilWithContext(ctx, s.workerLoop, time.Second)
+	}
+
+	return s.serverHub.ListenAndServe(ctx, CustomKubeletServicePort)
+}

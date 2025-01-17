@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"os"
 	"sync"
 	"time"
 
@@ -119,16 +120,22 @@ func runKd(ctx context.Context, mgr manager.Manager, selector string, nPods int)
 	}
 
 	nPodsPerTarget := nPods / len(targets.Items)
+	if nPodsPerTarget == 0 {
+		klog.Warning("The number of pods scaled per target is 0, resetting to 1")
+		nPodsPerTarget = 1
+	}
+
 	var wg sync.WaitGroup
+	wg.Add(len(targets.Items))
 	start := time.Now()
 	for i := range targets.Items {
-		wg.Add(1)
 		target := &targets.Items[i]
 		go func() {
 			defer wg.Done()
 			req := kdrpc.NewPodSchedulingRequest(kdClient, target, nPodsPerTarget)
 			if _, err := kdClient.Client().SchedulePods(ctx, req); err != nil {
 				klog.Error(err, "Error scaling up", "target", klog.KObj(target))
+				os.Exit(1)
 			}
 		}()
 	}

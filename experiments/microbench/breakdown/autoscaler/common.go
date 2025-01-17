@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"os"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -100,8 +101,7 @@ func (m *ReplicaSetMonitor) SetupWithManager(ctx context.Context, mgr ctrl.Manag
 }
 
 func (m *ReplicaSetMonitor) FilterEvent(object client.Object) bool {
-	labels := object.GetLabels()
-	return labels["app"] != "" && labels["workload"] == m.selector
+	return workload.IsWorkload(object) && object.GetLabels()["workload"] == m.selector
 }
 
 func (m *ReplicaSetMonitor) OnReplicaSetCreated(kdLogger *kdutil.Logger, rs *appsv1.ReplicaSet) {
@@ -112,11 +112,11 @@ func (m *ReplicaSetMonitor) OnReplicaSetCreated(kdLogger *kdutil.Logger, rs *app
 func (m *ReplicaSetMonitor) OnReplicaSetDeleted(kdLogger *kdutil.Logger, rs *appsv1.ReplicaSet) {
 	key := workload.KeyFromObject(rs)
 	kdLogger.Info("Deleted", "key", key)
-	m.expectations.Del(key, func(exp *Expectation) {
+	if exp, _ := m.expectations.Del(key); exp != nil {
 		if exp.Done() {
 			kdLogger.Info("Force done on deletion", "key", key)
 		}
-	})
+	}
 }
 
 func (m *ReplicaSetMonitor) OnReplicaSetUpdated(kdLogger *kdutil.Logger, old, new *appsv1.ReplicaSet) {
@@ -127,11 +127,11 @@ func (m *ReplicaSetMonitor) OnReplicaSetUpdated(kdLogger *kdutil.Logger, old, ne
 		return
 	}
 	if *new.Spec.Replicas == int32(exp.Desired()) {
-		m.expectations.Del(key, func(exp *Expectation) {
+		if exp, _ := m.expectations.Del(key); exp != nil {
 			if exp.Done() {
 				kdLogger.Info("Expectation met", "key", key)
 			}
-		})
+		}
 	}
 }
 
@@ -183,10 +183,10 @@ func run(ctx context.Context, mgr manager.Manager, selector string, nPods int, f
 		}
 		owner := &appsv1.Deployment{}
 		if err := mgrClient.Get(ctx, workload.NamespacedNameFromKey(key), owner); err != nil {
-			klog.Fatalf("Error getting Deployment target %s from ReplicaSet %s: %v", key, klog.KObj(rs), err)
+			klog.Fatalf("Error getting deployment target %s from ReplicaSet %s: %v", key, klog.KObj(rs), err)
 		}
 		if targetKeys.Has(key) {
-			klog.Fatalf("Duplicate Deployment target %s from ReplicaSet %s/%s", key, rs.Namespace, rs.Name)
+			klog.Fatalf("Duplicate deployment target %s from ReplicaSet %s/%s", key, rs.Namespace, rs.Name)
 		}
 		targetKeys.Insert(key)
 		targets = append(targets, owner)
@@ -212,6 +212,7 @@ func run(ctx context.Context, mgr manager.Manager, selector string, nPods int, f
 		go func() {
 			if err := mgrClient.Update(ctx, target); err != nil {
 				klog.Error(err, "Error scaling up", "target", klog.KObj(target))
+				os.Exit(1)
 			}
 		}()
 	}

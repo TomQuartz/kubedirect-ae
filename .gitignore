@@ -4,3 +4,11 @@ _tmp_*
 *.log
 /log
 /watch
+
+/cmd/kubelet/bin
+
+/experiments/trace/data
+/experiments/trace/dirigent
+
+/experiments/**/results
+!/experiments/**/results/reference

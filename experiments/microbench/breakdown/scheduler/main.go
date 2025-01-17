@@ -30,9 +30,9 @@ func init() {
 	klog.InitFlags(nil)
 }
 
-// NOTE: no ReplicaSet, just a template pod
-// k8s: fallback=binding + blocking rpc
-// kd: blocking rpc
+// NOTE: no ReplicaSet, just a template pod (no need to mark managed)
+// k8s: fallback=binding + blocking rpc, vary nPods
+// kd: blocking rpc, vary nPods
 func main() {
 	var baseline string
 	var target string
