@@ -19,7 +19,7 @@ spec:
         workload: test
         # NOTE: no need to set managed label for replicated pods
         # kubedirect/fallback: "binding"
-        # kubedirect/pod-lifecycle: "custom"
+        kubedirect/pod-lifecycle: "custom"
     spec:
       automountServiceAccountToken: false
       tolerations:
@@ -28,23 +28,5 @@ spec:
         effect: "NoSchedule"
       containers:
       - name: test
-        image: alpine:latest
-        command: [ "/bin/sh", "-c", "--" ]
-        args: [ "trap : TERM INT; sleep infinity & wait" ]
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: test
-  labels:
-    app: test
-    kind: workload
-spec:
-  selector:
-    app: test
-  ports:
-    - name: h2c
-      protocol: TCP
-      port: 80
-      targetPort: 80
-  type: ClusterIP
+        image: fake-image
+        imagePullPolicy: Never

@@ -15,6 +15,7 @@ function build_kind {
     
     kind build node-image . --image $kind_image
     docker push $kind_image
+    prune
 }
 
 function build_kubelet {
@@ -69,6 +70,7 @@ function build_k8s {
 
     # finally build and distribute kubelet
     build_kubelet
+    prune
 }
 
 function build_bench {
@@ -88,15 +90,16 @@ function build_bench {
             -t $bench_image .
         docker push $bench_image
     done
+    prune
 }
 
 function prune {
-    docker system prune -f >/dev/null 2>&1
-    docker volume prune -f >/dev/null 2>&1
-    # kube_build=$(docker_images | grep kube-build) || true
-    # if [ "$kube_build" != "" ]; then
-    #     docker rmi $kube_build
-    # fi
+    if [ "$1" == "all" ]; then
+        docker system prune -f --volumes >/dev/null 2>&1
+    else
+        docker container prune -f >/dev/null 2>&1
+        docker image prune -f >/dev/null 2>&1
+    fi
 }
 
 case "$1" in
@@ -114,6 +117,6 @@ bench)
     build_bench $@
     ;;
 prune)
-    prune
+    prune all
     ;;
 esac

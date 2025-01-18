@@ -56,7 +56,7 @@ function run_kubeadm {
     # cp kubeconfig to all workers
     for worker in $(workers $n_workers); do
         ssh $worker -- rm -rf ~/.kube
-        scp -r $HOME/.kube $worker:~
+        scp -qr $HOME/.kube $worker:~
     done
 
     # install metrics-server
@@ -149,7 +149,7 @@ run)
     run_kubeadm $@
     ;;
 watch)
-    # watch [ctrl|kubelet] [ctrl:master_name|kubelet:#workers]
+    # watch [ctrl|kubelet|clean] [ctrl:master_name|kubelet:#workers]
     shift
     if [ "$1" == "ctrl" ]; then
         shift
@@ -165,5 +165,8 @@ clean)
     clean_kubeadm
     ;;
 test)
+    run_kubeadm debug
+    watch_control_plane
+    watch_kubelet
     ;;
 esac

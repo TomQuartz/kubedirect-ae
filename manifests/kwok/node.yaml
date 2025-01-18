@@ -5,6 +5,8 @@ metadata:
   annotations:
     node.alpha.kubernetes.io/ttl: "0"
     kwok.x-k8s.io/node: fake
+    # fake node must override kubelet service addr because the ip is not reachable
+    kubedirect/kubelet-service-override: "true"
   labels:
     type: kwok
     kubernetes.io/hostname: ${NODENAME}
@@ -15,8 +17,6 @@ metadata:
     kubernetes.io/os: fake-linux
     kubernetes.io/role: agent
     node-role.kubernetes.io/agent: ""
-     # fake node must override kubelet service addr because the ip is not reachable
-    kubedirect/kubelet-service-override: "true"
 spec:
   taints: # Avoid scheduling real pods to fake Node
   - effect: NoSchedule

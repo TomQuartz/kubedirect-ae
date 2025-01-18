@@ -65,6 +65,7 @@ run_cmd_with_nodes $n_nodes _runtime "$cmd" custom
 }
 
 custom_kubelet_up # watch
+kwok_up
 
 for n_nodes in ${N_NODES[@]}; do
     kwok_node_up $n_nodes
@@ -72,4 +73,5 @@ for n_nodes in ${N_NODES[@]}; do
     kwok_node_down
 done
 
+kwok_down
 custom_kubelet_down

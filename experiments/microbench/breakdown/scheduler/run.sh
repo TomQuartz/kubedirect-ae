@@ -41,7 +41,7 @@ cat config/template-pod.yaml | envsubst | kubectl apply -f -
 read -p "Press enter to continue..."
 # sleep 60
 
-go run main.go -baseline $baseline -target $WORKLOAD -n $n_pods >result.log 2>stderr.log
+go run . -baseline $baseline -target $WORKLOAD -n $n_pods >result.log 2>stderr.log
 
 # cleanup
 cat config/template-pod.yaml | envsubst | kubectl delete -f -

@@ -128,6 +128,8 @@ EOF
     echo 'source <(kubectl completion bash)' >>~/.bashrc
     source ~/.bashrc
 
+    sudo crictl config --set runtime-endpoint=unix:///run/containerd/containerd.sock
+
     sudo apt install -y python3-pip
     python3 -m pip install --upgrade pip
     pip3 install numpy scipy

@@ -29,18 +29,22 @@ const (
 	dialInterval = 1 * time.Second
 )
 
+var kdClientKeyFunc = func(nodeName string) string {
+	return fmt.Sprintf("%v/%v", testClient, nodeName)
+}
+
 func doKubeletHandshake(ctx context.Context, src string, dest string, client kdproto.KubeletClient) (string, error) {
-	if src != testClient {
-		panic(fmt.Sprintf("invalid source: expected %s, got %s", testClient, src))
+	if clientKey := kdClientKeyFunc(dest); src != clientKey {
+		panic(fmt.Sprintf("invalid source: expected %s, got %s", clientKey, src))
 	}
-	msg := kdrpc.NewHandshakeRequest(testClient)
+	msg := kdrpc.NewHandshakeRequest(src, dest)
 	epoch := msg.Epoch
-	rsInfos, err := client.Handshake(ctx, msg)
+	nodeInfo, err := client.Handshake(ctx, msg)
 	if err != nil {
 		return "", err
 	}
-	if epoch != rsInfos.Epoch {
-		return "", fmt.Errorf("epoch mismatch: expected %s, got %s", epoch, rsInfos.Epoch)
+	if epoch != nodeInfo.Epoch {
+		return "", fmt.Errorf("epoch mismatch: expected %s, got %s", epoch, nodeInfo.Epoch)
 	}
 	logger := klog.FromContext(ctx)
 	kdLogger := kdutil.NewLogger(logger).WithHeader(fmt.Sprintf("Handshake->%v", dest))

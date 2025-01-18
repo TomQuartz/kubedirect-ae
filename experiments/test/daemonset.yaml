@@ -1,0 +1,26 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: test-daemonset
+  labels:
+    app: test-daemonset
+    kubedirect/workload-pool: test
+spec:
+  selector:
+    matchLabels:
+      app: test-daemonset
+      kubedirect/workload-pool: test
+  template:
+    metadata:
+      labels:
+        app: test-daemonset
+        kubedirect/workload-pool: test
+    spec:
+      automountServiceAccountToken: false
+      containers:
+      - name: test-daemonset
+        image: alpine:latest
+        command: [ "/bin/sh", "-c", "--" ]
+        args: [ "trap : TERM INT; sleep infinity & wait" ]
+        # NOTE: always use the latest image
+        imagePullPolicy: Always

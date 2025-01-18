@@ -35,7 +35,6 @@ const (
 type PendingPod struct {
 	Namespace string
 	Name      string
-	inMemPod  *corev1.Pod
 }
 
 func NewPendingPodFromAPIServer(pod *corev1.Pod) PendingPod {
@@ -45,11 +44,10 @@ func NewPendingPodFromAPIServer(pod *corev1.Pod) PendingPod {
 	}
 }
 
-func NewPendingPodFromInMemCache(pod *corev1.Pod) PendingPod {
+func NewPendingPodFromInMemCache(podInfo *kdctx.PodInfo) PendingPod {
 	return PendingPod{
-		Namespace: pod.Namespace,
-		Name:      pod.Name,
-		inMemPod:  pod,
+		Namespace: podInfo.Namespace,
+		Name:      podInfo.Name,
 	}
 }
 
@@ -69,10 +67,10 @@ type KubedirectServer struct {
 	podLister  corelisters.PodLister
 	// pod queue
 	// NOTE: for the queue to deduplicate, we should pass the struct by value
-	// however, in-mem pod are still passed by pointer, so there is a chance of duplicate
 	queue workqueue.TypedRateLimitingInterface[PendingPod]
 	// in-mem pod cache
-	// following the default kubelet, we index by pod name because name is unique for managed pod
+	// NOTE: unlike the default kubelet, the custom kubelet support kubelet service delegation
+	// so multiple nodes can map to a single custom kubelet
 	inMemCache *kdctx.PodInfoCache
 	// Nodename of this kubelet
 	nodeName string
@@ -84,6 +82,8 @@ type KubedirectServer struct {
 	readyTimers *kdutil.SharedMap[time.Time]
 	// whether to bind to real containers. if false, just simulate ready delay
 	simulate bool
+	// use patch or update to mark pod ready
+	patch bool
 }
 
 func NewKubedirectServer(c clientset.Interface, nodeName string) *KubedirectServer {
@@ -159,6 +159,10 @@ func (s *KubedirectServer) Simulate() {
 	s.simulate = true
 }
 
+func (s *KubedirectServer) UsePatch() {
+	s.patch = true
+}
+
 // the managed label is not required because this server also handles k8s-originated pods
 // NOTE: we cannot directly filter on spec.NodeName because there can be kubelet service delegation
 func (s *KubedirectServer) enqueueFilter(pod *corev1.Pod) bool {
@@ -166,18 +170,18 @@ func (s *KubedirectServer) enqueueFilter(pod *corev1.Pod) bool {
 }
 
 func (s *KubedirectServer) isResponsibleFor(pod *corev1.Pod) (bool, error) {
-	if pod.Spec.NodeName == s.nodeName {
-		return true, nil
-	}
 	if pod.Spec.NodeName == "" {
 		return false, nil
+	}
+	if pod.Spec.NodeName == s.nodeName {
+		return true, nil
 	}
 	thisNode, thisErr := s.nodeLister.Get(s.nodeName)
 	thatNode, thatErr := s.nodeLister.Get(pod.Spec.NodeName)
 	if thisErr != nil || thatErr != nil {
 		return false, fmt.Errorf("failed to get node object: %v", utilerrors.NewAggregate([]error{thisErr, thatErr}))
 	}
-	return thisNode.Labels[kdrpc.KubeletServiceAddrAnnotation] == thatNode.Labels[kdrpc.KubeletServiceAddrAnnotation], nil
+	return thisNode.Annotations[kdrpc.KubeletServiceAddrAnnotation] == thatNode.Annotations[kdrpc.KubeletServiceAddrAnnotation], nil
 }
 
 func (s *KubedirectServer) unwrapPodObject(kdLogger *kdutil.Logger, obj interface{}) *corev1.Pod {
@@ -223,27 +227,35 @@ func (s *KubedirectServer) handlePodEvent(obj interface{}, isDelete bool) {
 
 func (s *KubedirectServer) SyncPod(ctx context.Context, pending PendingPod) error {
 	logger := klog.FromContext(ctx)
-	kdLogger := kdutil.NewLogger(logger).WithHeader("SyncPod").WithValues("pod", pending)
+	kdLogger := kdutil.NewLogger(logger).WithHeader("SyncPod").WithValues("pod", pending.String())
 
 	var pod *corev1.Pod
-	isInMem := pending.inMemPod != nil
-	apiPod, err := s.podLister.Pods(pending.Namespace).Get(pending.Name)
-	if err != nil {
-		if apierrors.IsNotFound(err) {
-			if isInMem {
-				pod = pending.inMemPod
-			} else {
-				kdLogger.V(2).DEBUG("API pod not found, will ignore")
-				return nil
-			}
-		} else {
-			kdLogger.Error(err, "Failed to get API pod")
-			return err
-		}
-	} else {
+	var isInMem bool
+	if apiPod, err := s.podLister.Pods(pending.Namespace).Get(pending.Name); err == nil {
 		// we always api pod if present, even if pending is from in-mem cache
 		pod = apiPod.DeepCopy()
 		isInMem = false
+	} else if apierrors.IsNotFound(err) {
+		// try instantiate from in-mem cache
+		podInfo, _ := s.inMemCache.Get(pending.Name)
+		if podInfo == nil {
+			kdLogger.V(2).DEBUG("Pod not found in in-mem cache or informer cache, will ignore")
+			return nil
+		}
+		// get unnamed pod template
+		template, err := kdutil.GetUnnamedTemplateFor(ctx, s.podLister, podInfo.Namespace, podInfo.OwnerName, true)
+		if apierrors.IsNotFound(err) {
+			kdLogger.WARN("Template pod not found for in-mem pod, will ignore")
+			return nil
+		} else if err != nil {
+			kdLogger.Error(err, "Failed to get template pod")
+			return err
+		}
+		pod = podInfo.AsPersistentPod(template)
+		isInMem = true
+	} else {
+		kdLogger.Error(err, "Failed to get API pod")
+		return err
 	}
 
 	// check if the pod is bound to this kubelet
@@ -258,8 +270,7 @@ func (s *KubedirectServer) SyncPod(ctx context.Context, pending PendingPod) erro
 	// NOTE: ExposeManagedPod may be called multiple times for the same pod
 	// but creation can only succeed once
 	if isInMem {
-		kdLogger.Info("Exposing in-mem pod")
-		go s.exposeManagedPod(ctx, kdLogger, pod)
+		go s.ExposeManagedPod(ctx, pod)
 	}
 
 	// check api pod status
@@ -308,7 +319,6 @@ func (s *KubedirectServer) SyncPod(ctx context.Context, pending PendingPod) erro
 		return nil
 	}
 
-	kdLogger.Info("Marking pod as ready")
 	// get reference pod status
 	var refStatus *corev1.PodStatus
 	if s.simulate {
@@ -322,7 +332,7 @@ func (s *KubedirectServer) SyncPod(ctx context.Context, pending PendingPod) erro
 		}
 	}
 
-	if err := s.markPodReady(ctx, pod, refStatus); err != nil {
+	if _, err := s.markPodReady(ctx, pod, refStatus); err != nil {
 		kdLogger.Error(err, "Failed to mark pod as ready")
 		// notfound/conflict errs would be handled after requeue
 		return err
@@ -392,6 +402,7 @@ func (s *KubedirectServer) ListenAndServe(ctx context.Context) error {
 			kdLogger.Error(err, fmt.Sprintf("Failed to update node %v", s.nodeName))
 			return false, nil
 		}
+		kdLogger.Info(fmt.Sprintf("Published custom kubelet service address: %s", node.Annotations[kdrpc.KubeletServiceAddrAnnotation]))
 		return true, nil
 	}
 	if err := wait.PollUntilContextCancel(ctx, time.Second, true, publishServiceAddr); err != nil {

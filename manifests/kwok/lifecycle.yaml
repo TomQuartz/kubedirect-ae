@@ -1,79 +1,140 @@
 apiVersion: kwok.x-k8s.io/v1alpha1
 kind: Stage
 metadata:
-  name: pod-ready
+  name: node-heartbeat-with-lease
 spec:
-  resourceRef:
-    apiGroup: v1
-    kind: Pod
-  selector:
-    matchLabels:
-      kubedirect/pod-lifecycle: "kwok"
-    matchExpressions:
-    - key: '.metadata.deletionTimestamp'
-      operator: 'DoesNotExist'
-    - key: '.status.podIP'
-      operator: 'DoesNotExist'
   delay:
-    durationMilliseconds: 1000
-    # jitterDurationMilliseconds: 1000
+    durationMilliseconds: 600000
+    jitterDurationMilliseconds: 610000
   next:
     statusTemplate: |
-      {{`{{ $now := Now }}`}}
-
+      {{ $now := Now }}
+      {{ $lastTransitionTime := or .metadata.creationTimestamp $now }}
       conditions:
-      - lastTransitionTime: {{`{{ $now | Quote }}`}}
-        status: "True"
-        type: Initialized
-      - lastTransitionTime: {{`{{ $now | Quote }}`}}
-        status: "True"
-        type: Ready
-      - lastTransitionTime: {{`{{ $now | Quote }}`}}
-        status: "True"
-        type: ContainersReady
-      {{`{{ range .spec.readinessGates }}`}}
-      - lastTransitionTime: {{`{{ $now | Quote }}`}}
-        status: "True"
-        type: {{`{{ .conditionType | Quote }}`}}
-      {{`{{ end }}`}}
+      {{ range NodeConditions }}
+      - lastHeartbeatTime: {{ $now | Quote }}
+        lastTransitionTime: {{ $lastTransitionTime | Quote }}
+        message: {{ .message | Quote }}
+        reason: {{ .reason | Quote }}
+        status: {{ .status | Quote }}
+        type: {{ .type | Quote }}
+      {{ end }}
 
-      containerStatuses:
-      {{`{{ range .spec.containers }}`}}
-      - image: {{`{{ .image | Quote }}`}}
-        name: {{`{{ .name | Quote }}`}}
-        ready: true
-        started: true
-        restartCount: 0
-        state:
-          running:
-            startedAt: {{`{{ $now | Quote }}`}}
-      {{`{{ end }}`}}
+      addresses:
+      {{ with .status.addresses }}
+      {{ YAML . 1 }}
+      {{ else }}
+      {{ with NodeIP }}
+      - address: {{ . | Quote }}
+        type: InternalIP
+      {{ end }}
+      {{ with NodeName }}
+      - address: {{ . | Quote }}
+        type: Hostname
+      {{ end }}
+      {{ end }}
 
-      initContainerStatuses:
-      {{`{{ range .spec.initContainers }}`}}
-      - image: {{`{{ .image | Quote }}`}}
-        name: {{`{{ .name | Quote }}`}}
-        ready: true
-        restartCount: 0
-        {{`{{ if eq .restartPolicy "Always" }}`}}
-        started: true
-        state:
-          running:
-            startedAt: {{`{{ $now | Quote }}`}}
-        {{`{{ else }}`}}
-        state:
-          terminated:
-            exitCode: 0
-            finishedAt: {{`{{ $now | Quote }}`}}
-            reason: Completed
-            startedAt: {{`{{ $now | Quote }}`}}
-        {{`{{ end }}`}}
-      {{`{{ end }}`}}
+      {{ with NodePort }}
+      daemonEndpoints:
+        kubeletEndpoint:
+          Port: {{ . }}
+      {{ end }}
+  resourceRef:
+    apiGroup: v1
+    kind: Node
+  selector:
+    matchLabels:
+      type: kwok
+    matchExpressions:
+    - key: .status.phase
+      operator: In
+      values:
+      - Running
+    - key: .status.conditions.[] | select( .type == "Ready" ) | .status
+      operator: In
+      values:
+      - "True"
+---
+apiVersion: kwok.x-k8s.io/v1alpha1
+kind: Stage
+metadata:
+  name: node-initialize
+spec:
+  next:
+    statusTemplate: |
+      {{ $now := Now }}
+      {{ $lastTransitionTime := or .metadata.creationTimestamp $now }}
+      conditions:
+      {{ range NodeConditions }}
+      - lastHeartbeatTime: {{ $now | Quote }}
+        lastTransitionTime: {{ $lastTransitionTime | Quote }}
+        message: {{ .message | Quote }}
+        reason: {{ .reason | Quote }}
+        status: {{ .status | Quote }}
+        type: {{ .type  | Quote}}
+      {{ end }}
 
-      hostIP: {{`{{ NodeIPWith .spec.nodeName | Quote }}`}}
-      podIP: {{`{{ PodIPWith .spec.nodeName ( or .spec.hostNetwork false ) ( or .metadata.uid "" ) ( or .metadata.name "" ) ( or .metadata.namespace "" ) | Quote }}`}}
+      addresses:
+      {{ with .status.addresses }}
+      {{ YAML . 1 }}
+      {{ else }}
+      {{ with NodeIP }}
+      - address: {{ . | Quote }}
+        type: InternalIP
+      {{ end }}
+      {{ with NodeName }}
+      - address: {{ . | Quote }}
+        type: Hostname
+      {{ end }}
+      {{ end }}
+
+      {{ with NodePort }}
+      daemonEndpoints:
+        kubeletEndpoint:
+          Port: {{ . }}
+      {{ end }}
+
+      allocatable:
+      {{ with .status.allocatable }}
+      {{ YAML . 1 }}
+      {{ else }}
+        cpu: 1k
+        memory: 1Ti
+        pods: 1M
+      {{ end }}
+      capacity:
+      {{ with .status.capacity }}
+      {{ YAML . 1 }}
+      {{ else }}
+        cpu: 1k
+        memory: 1Ti
+        pods: 1M
+      {{ end }}
+      {{ with .status.nodeInfo }}
+      nodeInfo:
+        architecture: {{ with .architecture }} {{ . }} {{ else }} "amd64" {{ end }}
+        bootID: {{ with .bootID }} {{ . }} {{ else }} "" {{ end }}
+        containerRuntimeVersion: {{ with .containerRuntimeVersion }} {{ . }} {{ else }} "kwok-{{ Version }}" {{ end }}
+        kernelVersion: {{ with .kernelVersion }} {{ . }} {{ else }} "kwok-{{ Version }}" {{ end }}
+        kubeProxyVersion: {{ with .kubeProxyVersion }} {{ . }} {{ else }} "kwok-{{ Version }}" {{ end }}
+        kubeletVersion: {{ with .kubeletVersion }} {{ . }} {{ else }} "kwok-{{ Version }}" {{ end }}
+        machineID: {{ with .machineID }} {{ . }} {{ else }} "" {{ end }}
+        operatingSystem: {{ with .operatingSystem }} {{ . }} {{ else }} "linux" {{ end }}
+        osImage: {{ with .osImage }} {{ . }} {{ else }} "" {{ end }}
+        systemUUID: {{ with .systemUUID }} {{ . }} {{ else }} "" {{ end }}
+      {{ end }}
       phase: Running
-      startTime: {{`{{ $now | Quote }}`}}
+  resourceRef:
+    apiGroup: v1
+    kind: Node
+  selector:
+    matchLabels:
+      type: kwok
+    matchExpressions:
+    - key: .status.conditions.[] | select( .type == "Ready" ) | .status
+      operator: NotIn
+      values:
+      - "True"
 ---
 apiVersion: kwok.x-k8s.io/v1alpha1
 kind: Stage
@@ -82,23 +143,23 @@ metadata:
 spec:
   next:
     statusTemplate: |
-      {{`{{ $now := Now }}`}}
-      {{`{{ $root := . }}`}}
+      {{ $now := Now }}
+      {{ $root := . }}
       containerStatuses:
-      {{`{{ range $index, $item := .spec.containers }}`}}
-      {{`{{ $origin := index $root.status.containerStatuses $index }}`}}
-      - image: {{`{{ $item.image | Quote }}`}}
-        name: {{`{{ $item.name | Quote }}`}}
+      {{ range $index, $item := .spec.containers }}
+      {{ $origin := index $root.status.containerStatuses $index }}
+      - image: {{ $item.image | Quote }}
+        name: {{ $item.name | Quote }}
         ready: false
         restartCount: 0
         started: false
         state:
           terminated:
             exitCode: 0
-            finishedAt: {{`{{ $now | Quote }}`}}
+            finishedAt: {{ $now | Quote }}
             reason: Completed
-            startedAt: {{`{{ $now | Quote }}`}}
-      {{`{{ end }}`}}
+            startedAt: {{ $now | Quote }}
+      {{ end }}
       phase: Succeeded
   resourceRef:
     apiGroup: v1
@@ -140,137 +201,68 @@ spec:
 apiVersion: kwok.x-k8s.io/v1alpha1
 kind: Stage
 metadata:
-  name: node-heartbeat-with-lease
+  name: pod-ready
 spec:
   delay:
-    durationMilliseconds: 600000
-    jitterDurationMilliseconds: 610000
+    durationMilliseconds: 1000
+    # jitterDurationMilliseconds: 1000
   next:
     statusTemplate: |
-      {{`{{ $now := Now }}`}}
-      {{`{{ $lastTransitionTime := or .metadata.creationTimestamp $now }}`}}
+      {{ $now := Now }}
+
       conditions:
-      {{`{{ range NodeConditions }}`}}
-      - lastHeartbeatTime: {{`{{ $now | Quote }}`}}
-        lastTransitionTime: {{`{{ $lastTransitionTime | Quote }}`}}
-        message: {{`{{ .message | Quote }}`}}
-        reason: {{`{{ .reason | Quote }}`}}
-        status: {{`{{ .status | Quote }}`}}
-        type: {{`{{ .type | Quote }}`}}
-      {{`{{ end }}`}}
+      - lastTransitionTime: {{ $now | Quote }}
+        status: "True"
+        type: Initialized
+      - lastTransitionTime: {{ $now | Quote }}
+        status: "True"
+        type: Ready
+      - lastTransitionTime: {{ $now | Quote }}
+        status: "True"
+        type: ContainersReady
+      {{ range .spec.readinessGates }}
+      - lastTransitionTime: {{ $now | Quote }}
+        status: "True"
+        type: {{ .conditionType | Quote }}
+      {{ end }}
 
-      addresses:
-      {{`{{ with .status.addresses }}`}}
-      {{`{{ YAML . 1 }}`}}
-      {{`{{ else }}`}}
-      {{`{{ with NodeIP }}`}}
-      - address: {{`{{ . | Quote }}`}}
-        type: InternalIP
-      {{`{{ end }}`}}
-      {{`{{ with NodeName }}`}}
-      - address: {{`{{ . | Quote }}`}}
-        type: Hostname
-      {{`{{ end }}`}}
-      {{`{{ end }}`}}
+      containerStatuses:
+      {{ range .spec.containers }}
+      - image: {{ .image | Quote }}
+        name: {{ .name | Quote }}
+        ready: true
+        restartCount: 0
+        state:
+          running:
+            startedAt: {{ $now | Quote }}
+      {{ end }}
 
-      {{`{{ with NodePort }}`}}
-      daemonEndpoints:
-        kubeletEndpoint:
-          Port: {{`{{ . }}`}}
-      {{`{{ end }}`}}
-  resourceRef:
-    apiGroup: v1
-    kind: Node
-  selector:
-    matchLabels:
-      type: kwok
-    matchExpressions:
-    - key: .status.phase
-      operator: In
-      values:
-      - Running
-    - key: .status.conditions.[] | select( .type == "Ready" ) | .status
-      operator: In
-      values:
-      - "True"
----
-apiVersion: kwok.x-k8s.io/v1alpha1
-kind: Stage
-metadata:
-  name: node-initialize
-spec:
-  next:
-    statusTemplate: |
-      {{`{{ $now := Now }}`}}
-      {{`{{ $lastTransitionTime := or .metadata.creationTimestamp $now }}`}}
-      conditions:
-      {{`{{ range NodeConditions }}`}}
-      - lastHeartbeatTime: {{`{{ $now | Quote }}`}}
-        lastTransitionTime: {{`{{ $lastTransitionTime | Quote }}`}}
-        message: {{`{{ .message | Quote }}`}}
-        reason: {{`{{ .reason | Quote }}`}}
-        status: {{`{{ .status | Quote }}`}}
-        type: {{`{{ .type  | Quote}}`}}
-      {{`{{ end }}`}}
+      initContainerStatuses:
+      {{ range .spec.initContainers }}
+      - image: {{ .image | Quote }}
+        name: {{ .name | Quote }}
+        ready: true
+        restartCount: 0
+        state:
+          terminated:
+            exitCode: 0
+            finishedAt: {{ $now | Quote }}
+            reason: Completed
+            startedAt: {{ $now | Quote }}
+      {{ end }}
 
-      addresses:
-      {{`{{ with .status.addresses }}`}}
-      {{`{{ YAML . 1 }}`}}
-      {{`{{ else }}`}}
-      {{`{{ with NodeIP }}`}}
-      - address: {{`{{ . | Quote }}`}}
-        type: InternalIP
-      {{`{{ end }}`}}
-      {{`{{ with NodeName }}`}}
-      - address: {{`{{ . | Quote }}`}}
-        type: Hostname
-      {{`{{ end }}`}}
-      {{`{{ end }}`}}
-
-      {{`{{ with NodePort }}`}}
-      daemonEndpoints:
-        kubeletEndpoint:
-          Port: {{`{{ . }}`}}
-      {{`{{ end }}`}}
-
-      allocatable:
-      {{`{{ with .status.allocatable }}`}}
-      {{`{{ YAML . 1 }}`}}
-      {{`{{ else }}`}}
-        cpu: 1k
-        memory: 1Ti
-        pods: 1M
-      {{`{{ end }}`}}
-      capacity:
-      {{`{{ with .status.capacity }}`}}
-      {{`{{ YAML . 1 }}`}}
-      {{`{{ else }}`}}
-        cpu: 1k
-        memory: 1Ti
-        pods: 1M
-      {{`{{ end }}`}}
-      {{`{{ with .status.nodeInfo }}`}}
-      nodeInfo:
-        architecture: {{`{{ with .architecture }}`}} {{`{{ . }}`}} {{`{{ else }}`}} "amd64" {{`{{ end }}`}}
-        bootID: {{`{{ with .bootID }}`}} {{`{{ . }}`}} {{`{{ else }}`}} "" {{`{{ end }}`}}
-        containerRuntimeVersion: {{`{{ with .containerRuntimeVersion }}`}} {{`{{ . }}`}} {{`{{ else }}`}} "kwok-{{`{{ Version }}`}}" {{`{{ end }}`}}
-        kernelVersion: {{`{{ with .kernelVersion }}`}} {{`{{ . }}`}} {{`{{ else }}`}} "kwok-{{`{{ Version }}`}}" {{`{{ end }}`}}
-        kubeProxyVersion: {{`{{ with .kubeProxyVersion }}`}} {{`{{ . }}`}} {{`{{ else }}`}} "kwok-{{`{{ Version }}`}}" {{`{{ end }}`}}
-        kubeletVersion: {{`{{ with .kubeletVersion }}`}} {{`{{ . }}`}} {{`{{ else }}`}} "kwok-{{`{{ Version }}`}}" {{`{{ end }}`}}
-        machineID: {{`{{ with .machineID }}`}} {{`{{ . }}`}} {{`{{ else }}`}} "" {{`{{ end }}`}}
-        operatingSystem: {{`{{ with .operatingSystem }}`}} {{`{{ . }}`}} {{`{{ else }}`}} "linux" {{`{{ end }}`}}
-        osImage: {{`{{ with .osImage }}`}} {{`{{ . }}`}} {{`{{ else }}`}} "" {{`{{ end }}`}}
-        systemUUID: {{`{{ with .systemUUID }}`}} {{`{{ . }}`}} {{`{{ else }}`}} "" {{`{{ end }}`}}
-      {{`{{ end }}`}}
+      hostIP: {{ NodeIPWith .spec.nodeName | Quote }}
+      podIP: {{ PodIPWith .spec.nodeName ( or .spec.hostNetwork false ) ( or .metadata.uid "" ) ( or .metadata.name "" ) ( or .metadata.namespace "" ) | Quote }}
       phase: Running
+      startTime: {{ $now | Quote }}
   resourceRef:
     apiGroup: v1
-    kind: Node
+    kind: Pod
   selector:
     matchLabels:
-      type: kwok
+      kubedirect/pod-lifecycle: "kwok"
     matchExpressions:
-    - key: .status.conditions.[] | select( .type == "Ready" ) | .status
-      operator: NotIn
-      values:
-      - "True"
+    - key: .metadata.deletionTimestamp
+      operator: DoesNotExist
+    - key: .status.podIP
+      operator: DoesNotExist

@@ -61,7 +61,7 @@ cat config/daemonset.yaml | envsubst | kubectl apply -f -
 read -p "Press enter to continue..."
 # sleep 60
 
-go run main.go -baseline $baseline -selector $WORKLOAD -n $n_pods >result.log 2>stderr.log
+go run . -baseline $baseline -selector $WORKLOAD -n $n_pods >result.log 2>stderr.log
 
 # cleanup
 kubectl delete deployment -l workload=$WORKLOAD

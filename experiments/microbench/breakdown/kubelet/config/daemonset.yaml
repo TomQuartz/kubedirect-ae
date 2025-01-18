@@ -1,7 +1,7 @@
 # NOTE: this daemonset is NOT used by custom kubelet to generate reference status based on workload-pool label
 # only to ensure that the image is locally available on all nodes when using the default kubelet
 apiVersion: apps/v1
-kind: Daemonset
+kind: DaemonSet
 metadata:
   name: ${NAME}
   labels:

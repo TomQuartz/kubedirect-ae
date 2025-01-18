@@ -27,7 +27,7 @@ function kubeadm_down {
 
 # usage: custom_kubelet_up [watch] [#workers]
 function custom_kubelet_up {
-    $ROOT_DIR/scripts/kubelet.sh $@ -- -simulate -ready-after=200
+    $ROOT_DIR/scripts/kubelet.sh run $@ -- -simulate -ready-after=200
     sleep 30
 }
 

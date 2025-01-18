@@ -35,10 +35,12 @@ func init() {
 func main() {
 	var node string
 	var simulate bool
+	var patch bool
 	var readyDelayMilliseconds int
 
 	flag.StringVar(&node, "node", "", "Node name this kubelet binds to. Default to hostname if not set")
 	flag.BoolVar(&simulate, "simulate", false, "If true, report pod readiness without binding to real containers")
+	flag.BoolVar(&patch, "patch", true, "If true, use patch instead of update to mark pod ready")
 	flag.IntVar(&readyDelayMilliseconds, "ready-after", 100, "Delay in ms before kubelet reports pod ready")
 	flag.Parse()
 
@@ -51,6 +53,7 @@ func main() {
 	}
 
 	ctx := ctrl.SetupSignalHandler()
+	ctrl.SetLogger(klog.Background())
 	kubeClient := benchutil.NewClientsetOrDie()
 
 	kdServer := NewKubedirectServer(kubeClient, node).
@@ -58,8 +61,13 @@ func main() {
 	if simulate {
 		kdServer.Simulate()
 	}
+	if patch {
+		kdServer.UsePatch()
+	}
 
+	klog.InfoS("Starting custom kubelet server", "node", node, "simulate", simulate, "ready-after", readyDelayMilliseconds, "patch", patch)
 	if err := kdServer.ListenAndServe(ctx); err != nil {
 		klog.Fatalf("Failed to listen & serve: %v", err)
 	}
+	klog.Info("Server stopped")
 }

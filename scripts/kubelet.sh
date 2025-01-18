@@ -13,7 +13,7 @@ function build_kubelet {
     echo "Building the custom kubelet binary..."
     cd $ROOT_DIR/cmd/kubelet
     mkdir -p bin
-    go build -o bin/kubelet main.go
+    go build -o bin/kubelet .
 
     echo "Distributing the custom kubelet binary..."
     for worker in $(workers); do
@@ -51,16 +51,15 @@ function run_kubelet {
     WATCH_LOG=$LOG_DIR/$target
     mkdir -p $WATCH_DIR && mkdir -p $WATCH_LOG
     sudo rm -rf $WATCH_LOG/*
-    
-    if [ -n "$watch" ]; then
-        WATCH_CMD=">$WATCH_LOG/kubelet-$worker.log 2>&1"
-    fi
 
     for worker in $(workers $n_workers); do
-        nohup ssh $worker "~/.kubedirect/kubelet $@" $WATCH_CMD &
+        if [ -n "$watch" ]; then
+            nohup ssh $worker "~/.kubedirect/kubelet $@" >$WATCH_LOG/kubelet-$worker.log 2>&1 &
+        else
+            nohup ssh $worker "~/.kubedirect/kubelet $@ >~/.kubedirect/kubelet-$worker.log 2>&1" >/dev/null 2>&1 &
+        fi
         pid=$!
-        echo "$pid: $worker kubelet $WATCH_CMD"
-        echo $pid >> $WATCH_DIR/pids
+        echo "$pid" >> $WATCH_DIR/pids
     done
 }
 
@@ -109,12 +108,12 @@ function clean_kubelet {
         for pid in $(cat $WATCH_DIR/pids); do
             kill $pid || true
         done
+        n_workers=$(cat $WATCH_DIR/pids | wc -l)
+        for worker in $(workers $n_workers); do
+            ssh $worker "pkill -f ~/.kubedirect/kubelet"
+        done
     fi
     rm -rf $WATCH_DIR
-}
-
-function test_test {
-    local x=2
 }
 
 case "$1" in
@@ -133,8 +132,5 @@ delegate)
     ;;
 test)
     shift
-    x=1
-    test_test
-    echo $x
     ;;
 esac

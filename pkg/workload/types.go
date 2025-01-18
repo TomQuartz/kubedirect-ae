@@ -72,8 +72,8 @@ func (r *Response) Summary() string {
 	GrecvRes := latency(r.GatewayRecvTS)
 	CRecvRes := latency(r.ClientRecvTS)
 	delay := latency(r.GatewayRecvTS.Add(-time.Duration(r.RuntimeMicroSec) * time.Microsecond))
-	return fmt.Sprintf("ID: %v, Status: %v, TS: %v, CSendReq: %v, GRecvReq: %v, GSendReq: %v, GRecvRes: %v, CRecvRes: %v, Delay: %v, Runtime: %.3f/%vms\n",
-		r.Source.ID, r.Status, traceTS, CSendReq, GrecvReq, GsendReq, GrecvRes, CRecvRes, delay, float64(r.RuntimeMicroSec)/1000, r.Source.DurationMilliSec)
+	return fmt.Sprintf("ID: %v, Func: %v, Status: %v, TS: %v, CSendReq: %v, GRecvReq: %v, GSendReq: %v, GRecvRes: %v, CRecvRes: %v, Delay: %v, Runtime: %.3f/%vms\n",
+		r.Source.ID, r.Source.Target, r.Status, traceTS, CSendReq, GrecvReq, GsendReq, GrecvRes, CRecvRes, delay, float64(r.RuntimeMicroSec)/1000, r.Source.DurationMilliSec)
 }
 
 type RequestBuffer = *chann.Chann[*Request]

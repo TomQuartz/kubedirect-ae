@@ -86,7 +86,7 @@ read -p "Press enter to continue..."
 
 echo "Starting trace client with args: $@ $arg_gateway $arg_backend $arg_autoscaler $arg_autoscaler_config $arg_loader $arg_output"
 
-go run main.go $@ $arg_gateway $arg_backend $arg_autoscaler $arg_autoscaler_config $arg_loader $arg_output \
+go run . $@ $arg_gateway $arg_backend $arg_autoscaler $arg_autoscaler_config $arg_loader $arg_output \
     >stderr.log 2>&1
 
 # cleanup

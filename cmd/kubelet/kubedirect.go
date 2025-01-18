@@ -1,7 +1,9 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -9,6 +11,8 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/strategicpatch"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/klog/v2"
 
@@ -32,13 +36,13 @@ func (s *KubedirectServer) Register(sr grpc.ServiceRegistrar) {
 // impl kdproto.KubeletServer
 func (s *KubedirectServer) Handshake(ctx context.Context, req *kdproto.HandshakeRequest) (*kdproto.NodeInfo, error) {
 	kdLogger := kdutil.NewLogger(klog.FromContext(ctx)).WithHeader(req.Source + "->Handshake")
-	kdLogger.Info(fmt.Sprintf("New epoch from %s: %s", req.Source, req.Epoch))
+	kdLogger.Info(fmt.Sprintf("New epoch from %s to %s: %s", req.Source, req.Destination, req.Epoch))
 	holder := s.serverHub.Lock(req.Source, req.Epoch)
 	defer holder.Unlock()
 	msg := &kdproto.NodeInfo{
 		Epoch: req.Epoch,
-		Name:  s.nodeName,
-		Pods:  s.inMemCache.AsPodInfosProto(),
+		Name:  req.Destination,
+		Pods:  s.inMemCache.AsPodInfosProtoOnNode(req.Destination),
 	}
 	return msg, nil
 }
@@ -47,7 +51,7 @@ func (s *KubedirectServer) Handshake(ctx context.Context, req *kdproto.Handshake
 func (s *KubedirectServer) BindPod(ctx context.Context, req *kdproto.PodBindingRequest) (*emptypb.Empty, error) {
 	kdLogger := kdutil.NewLogger(klog.FromContext(ctx)).WithHeader(req.Source + "->BindPod")
 	// get unnamed pod template
-	template, err := kdutil.GetUnnamedTemplateFor(ctx, s.podLister, req.PodInfo.Owner.Namespace, req.PodInfo.Owner.Name, true)
+	_, err := kdutil.GetUnnamedTemplateFor(ctx, s.podLister, req.PodInfo.Owner.Namespace, req.PodInfo.Owner.Name, false)
 	// err is probably due to:
 	// 1. the template pod was deleted, which means the rs is also deleted
 	// 2. the template pod is not yet added to the informer cache
@@ -58,7 +62,7 @@ func (s *KubedirectServer) BindPod(ctx context.Context, req *kdproto.PodBindingR
 			kdrpc.NoTemplatePodError, req.PodInfo.Owner.Namespace, req.PodInfo.Owner.Name, err,
 		)
 	}
-	podInfo := kdctx.NewPodInfoFromBindingRequest(req, s.nodeName)
+	podInfo := kdctx.NewPodInfoFromBindingRequest(req)
 	// acquire shared lock on epoch
 	holder, err := s.serverHub.RLock(req.Source, req.Epoch)
 	if err != nil {
@@ -74,16 +78,15 @@ func (s *KubedirectServer) BindPod(ctx context.Context, req *kdproto.PodBindingR
 	// NOTE: BindPod can be called multiple times for the same pod
 	// the previous GetOrCreate check should avoid most duplicate deliveries
 	// but they can still happen in case the in-mem cache is flushed by informer event handler and BindPod comes in again.
-	// the PendingPod struct, as key of the workqueue, treats two identical in-mem pods as **different** (due to the pointer field)
-	// but it is fine because the Create and UpdateStatus can only succeed once for a certain pod.
-	pod := podInfo.AsPersistentPod(template)
-	pending := NewPendingPodFromInMemCache(pod)
+	// but it is fine because we always respect api pods (i.e., with ResourceVersion) if present
+	pending := NewPendingPodFromInMemCache(podInfo)
 	s.queue.Add(pending)
 	return &emptypb.Empty{}, nil
 }
 
-func (s *KubedirectServer) exposeManagedPod(ctx context.Context, kdLogger *kdutil.Logger, pod *corev1.Pod) {
-	kdLogger = kdLogger.WithHeader("Expose")
+func (s *KubedirectServer) ExposeManagedPod(ctx context.Context, pod *corev1.Pod) {
+	logger := klog.FromContext(ctx)
+	kdLogger := kdutil.NewLogger(logger).WithHeader("Expose").WithValues("pod", klog.KObj(pod))
 	if pod.ResourceVersion != "" {
 		kdLogger.WARN("Pod with resource version should not be exposed again")
 		return
@@ -92,13 +95,13 @@ func (s *KubedirectServer) exposeManagedPod(ctx context.Context, kdLogger *kduti
 	tryCreate := func(ctx context.Context) (bool, error) {
 		_, err := s.client.CoreV1().Pods(pod.Namespace).Create(ctx, pod, metav1.CreateOptions{})
 		if err == nil {
-			kdLogger.V(1).DEBUG("Successfully exposed pod", "elapsed", time.Since(start))
+			kdLogger.Info("Pod exposed", "elapsed", time.Since(start))
 			return true, nil
 		} else if apierrors.IsAlreadyExists(err) {
 			kdLogger.V(2).WARN("Pod already exposed")
 			return true, nil
 		}
-		kdLogger.WARN(fmt.Sprintf("Failed to expose pod: %v", err))
+		kdLogger.Error(err, "Failed to expose pod")
 		return false, nil
 	}
 	wait.PollUntilContextCancel(ctx, time.Second, true, tryCreate)
@@ -109,14 +112,14 @@ func (s *KubedirectServer) getRefPodStatus(pod *corev1.Pod) (*corev1.PodStatus, 
 	workloadSelector := labels.Set{
 		WorkloadPoolLabel: pod.Labels["workload"],
 	}
-	workloadPool, err := s.podLister.Pods(s.nodeName).List(workloadSelector.AsSelectorPreValidated())
+	workloadPool, err := s.podLister.Pods(pod.Namespace).List(workloadSelector.AsSelectorPreValidated())
 	if err != nil {
 		return nil, fmt.Errorf("failed to list pods from workload pool: %v", err)
 	}
 	var matchingPod *corev1.Pod
-	for _, pod := range workloadPool {
-		if pod.Spec.NodeName == s.nodeName && kdutil.IsPodReady(pod) {
-			matchingPod = pod
+	for _, wPod := range workloadPool {
+		if wPod.Spec.NodeName == pod.Spec.NodeName && kdutil.IsPodReady(wPod) {
+			matchingPod = wPod
 			break
 		}
 	}
@@ -129,7 +132,7 @@ func (s *KubedirectServer) getRefPodStatus(pod *corev1.Pod) (*corev1.PodStatus, 
 	return refStatus, nil
 }
 
-func (s *KubedirectServer) simulateRefPodStatus(_ *corev1.Pod) *corev1.PodStatus {
+func (s *KubedirectServer) simulateRefPodStatus(pod *corev1.Pod) *corev1.PodStatus {
 	// simulate the reference pod status
 	refStatus := &corev1.PodStatus{
 		Phase: corev1.PodRunning,
@@ -146,9 +149,47 @@ func (s *KubedirectServer) simulateRefPodStatus(_ *corev1.Pod) *corev1.PodStatus
 				Type:   corev1.PodScheduled,
 				Status: corev1.ConditionTrue,
 			},
+			{
+				Type:   corev1.PodInitialized,
+				Status: corev1.ConditionTrue,
+			},
 		},
 		HostIP: "127.0.0.1",
 		PodIP:  "127.0.0.1",
+	}
+	for i := range pod.Spec.ReadinessGates {
+		refStatus.Conditions = append(refStatus.Conditions, corev1.PodCondition{
+			Type:   pod.Spec.ReadinessGates[i].ConditionType,
+			Status: corev1.ConditionTrue,
+		})
+	}
+	literalTrue := true
+	for i := range pod.Spec.Containers {
+		status := corev1.ContainerStatus{
+			Name:    pod.Spec.Containers[i].Name,
+			Image:   pod.Spec.Containers[i].Image,
+			Started: &literalTrue,
+			Ready:   literalTrue,
+			State: corev1.ContainerState{
+				Running: &corev1.ContainerStateRunning{},
+			},
+		}
+		refStatus.ContainerStatuses = append(refStatus.ContainerStatuses, status)
+	}
+	for i := range pod.Spec.InitContainers {
+		status := corev1.ContainerStatus{
+			Name:    pod.Spec.InitContainers[i].Name,
+			Image:   pod.Spec.InitContainers[i].Image,
+			Started: &literalTrue,
+			Ready:   literalTrue,
+			State: corev1.ContainerState{
+				Terminated: &corev1.ContainerStateTerminated{
+					ExitCode: 0,
+					Reason:   "Completed",
+				},
+			},
+		}
+		refStatus.InitContainerStatuses = append(refStatus.InitContainerStatuses, status)
 	}
 	tweakRefPodStatus(refStatus)
 	return refStatus
@@ -173,24 +214,72 @@ func tweakRefPodStatus(refStatus *corev1.PodStatus) {
 		if running := status.State.Running; running != nil {
 			running.StartedAt = now
 		}
+		if terminated := status.State.Terminated; terminated != nil {
+			terminated.StartedAt = now
+			terminated.FinishedAt = now
+		}
 	}
 }
 
-// assume from is mutable (i.e. deepcopied from cache)
-func (s *KubedirectServer) markPodReady(ctx context.Context, pod *corev1.Pod, refStatus *corev1.PodStatus) error {
-	pod.Status = *refStatus.DeepCopy()
-	// update transition times
-	now := metav1.Now()
-	for i := range refStatus.Conditions {
-		fromCond := &refStatus.Conditions[i]
-		toCond := &pod.Status.Conditions[i]
-		if !fromCond.LastProbeTime.IsZero() {
-			toCond.LastProbeTime = now
-		}
-		if !fromCond.LastTransitionTime.IsZero() {
-			toCond.LastTransitionTime = now
-		}
+func (s *KubedirectServer) markPodReady(ctx context.Context, pod *corev1.Pod, refStatus *corev1.PodStatus) (*corev1.Pod, error) {
+	if s.patch {
+		return s.markPodReadyByPatch(ctx, pod, refStatus)
 	}
-	_, err := s.client.CoreV1().Pods(pod.Namespace).UpdateStatus(ctx, pod, metav1.UpdateOptions{})
-	return err
+	return s.markPodReadyByUpdate(ctx, pod, refStatus)
+}
+
+func (s *KubedirectServer) markPodReadyByUpdate(ctx context.Context, pod *corev1.Pod, refStatus *corev1.PodStatus) (*corev1.Pod, error) {
+	logger := klog.FromContext(ctx)
+	kdLogger := kdutil.NewLogger(logger).WithHeader("Update").WithValues("pod", klog.KObj(pod))
+	pod.Status = *refStatus.DeepCopy()
+	start := time.Now()
+	updatedPod, err := s.client.CoreV1().Pods(pod.Namespace).UpdateStatus(ctx, pod, metav1.UpdateOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to update status: %v", err)
+	}
+	kdLogger.Info("Pod marked ready", "elapsed", time.Since(start))
+	return updatedPod, nil
+}
+
+func (s *KubedirectServer) markPodReadyByPatch(ctx context.Context, pod *corev1.Pod, refStatus *corev1.PodStatus) (*corev1.Pod, error) {
+	logger := klog.FromContext(ctx)
+	kdLogger := kdutil.NewLogger(logger).WithHeader("Patch").WithValues("pod", klog.KObj(pod))
+	patchBytes, unchanged, err := preparePatchBytesForPodStatus(pod.Namespace, pod.Name, pod.UID, pod.Status, *refStatus)
+	if err != nil {
+		return nil, err
+	}
+	if unchanged {
+		kdLogger.V(2).DEBUG("Pod status unchanged, will ignore")
+		return pod, nil
+	}
+	start := time.Now()
+	updatedPod, err := s.client.CoreV1().Pods(pod.Namespace).Patch(ctx, pod.Name, types.StrategicMergePatchType, patchBytes, metav1.PatchOptions{}, "status")
+	if err != nil {
+		return nil, fmt.Errorf("failed to patch status %q: %v", patchBytes, err)
+	}
+	kdLogger.Info("Pod marked ready", "elapsed", time.Since(start))
+	return updatedPod, nil
+}
+
+func preparePatchBytesForPodStatus(namespace, name string, uid types.UID, oldPodStatus, newPodStatus corev1.PodStatus) ([]byte, bool, error) {
+	oldData, err := json.Marshal(corev1.Pod{
+		Status: oldPodStatus,
+	})
+	if err != nil {
+		return nil, false, fmt.Errorf("failed to Marshal oldData for pod %q/%q: %v", namespace, name, err)
+	}
+
+	newData, err := json.Marshal(corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{UID: uid}, // only put the uid in the new object to ensure it appears in the patch as a precondition
+		Status:     newPodStatus,
+	})
+	if err != nil {
+		return nil, false, fmt.Errorf("failed to Marshal newData for pod %q/%q: %v", namespace, name, err)
+	}
+
+	patchBytes, err := strategicpatch.CreateTwoWayMergePatch(oldData, newData, corev1.Pod{})
+	if err != nil {
+		return nil, false, fmt.Errorf("failed to CreateTwoWayMergePatch for pod %q/%q: %v", namespace, name, err)
+	}
+	return patchBytes, bytes.Equal(patchBytes, []byte(fmt.Sprintf(`{"metadata":{"uid":%q}}`, uid))), nil
 }

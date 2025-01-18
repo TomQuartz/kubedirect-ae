@@ -36,7 +36,7 @@ func doSchedulerHandshake(ctx context.Context, src string, dest string, client k
 	if dest != schedService {
 		panic(fmt.Sprintf("invalid destination: expected %s, got %s", schedService, dest))
 	}
-	msg := kdrpc.NewHandshakeRequest(testClient)
+	msg := kdrpc.NewHandshakeRequest(src, dest)
 	epoch := msg.Epoch
 	rsInfos, err := client.Handshake(ctx, msg)
 	if err != nil {
