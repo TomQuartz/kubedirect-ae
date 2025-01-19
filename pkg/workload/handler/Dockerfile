@@ -1,7 +1,7 @@
 # Stage 0: Build #
 # Use the official Golang image to create a build artifact.
 # This is based on Debian and sets the GOPATH to /go.
-FROM golang:1.21.5 as BUILDER
+FROM golang:1.22.0 AS builder
 
 ARG TARGET_PLATFORM=knative
 
@@ -27,7 +27,7 @@ RUN CGO_ENABLED=1 GOARCH=amd64 GOGCCFLAGS=-m64 GOOS=linux go build -mod=readonly
 FROM debian:stable-slim
 
 # Copy the binary to the production image from the BUILDER stage.
-COPY --from=BUILDER /server /server
+COPY --from=builder /server /server
 
 # Run the web service on container startup.
 ENTRYPOINT ["/server"]

@@ -25,7 +25,6 @@
 package workload
 
 import (
-	"fmt"
 	"time"
 
 	"k8s.io/klog/v2"
@@ -41,7 +40,8 @@ func LoadTraceFromConfig(path string) []*TraceSpec {
 	functions := LoadDirigentTraceFromConfig(path)
 	specs := make([]*TraceSpec, 0, len(functions))
 	for _, function := range functions {
-		specs = append(specs, TranslateDirigentFunction(function))
+		spec := TranslateDirigentFunction(function)
+		specs = append(specs, spec)
 	}
 	return specs
 }
@@ -59,7 +59,7 @@ func TranslateDirigentFunction(function *common.Function) *TraceSpec {
 		startOfThisMinute := float64(minute) * 60.
 		elaspedInThisMinute := 0.
 		for i := 0; i < nReqsThisMinute; i++ {
-			elaspedInThisMinute += rawSpec.IAT[reqIndex] / float64(time.Microsecond)
+			elaspedInThisMinute += rawSpec.IAT[reqIndex] / float64(time.Second/time.Microsecond)
 			absArrivalTime := startOfThisMinute + elaspedInThisMinute
 			runtimeMilliSec := rawSpec.RuntimeSpecification[reqIndex].Runtime
 			spec.Invocations = append(spec.Invocations, &InvocationSpec{
@@ -94,10 +94,10 @@ func LoadDirigentTraceFromConfig(path string) []*common.Function {
 	traceParser := trace.NewAzureParser(cfg.TracePath, yamlPath, durationToParse)
 	functions := traceParser.Parse(cfg.Platform)
 
-	klog.Infof("Traces contain the following %d functions:\n", len(functions))
-	for _, function := range functions {
-		fmt.Printf("\t%s\n", function.Name)
-	}
+	klog.Infof("Found %d functions in trace", len(functions))
+	// for _, function := range functions {
+	// 	fmt.Printf("\t%s\n", function.Name)
+	// }
 
 	iatDistribution, shiftIAT := parseIATDistribution(&cfg)
 	traceGranularity := parseTraceGranularity(&cfg)

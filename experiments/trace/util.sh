@@ -18,10 +18,10 @@ function setup_dirs {
 function kubeadm_up {
     # loop until kubeadm is up
     while true; do
-        $ROOT_DIR/scripts/kubeadm.sh run $@ && break
-        sleep 30
+        $ROOT_DIR/scripts/kubeadm.sh test && break
+        sleep 10
         $ROOT_DIR/scripts/kubeadm.sh clean
-        sleep 30
+        sleep 60
     done
     sleep 30
 }
@@ -36,7 +36,7 @@ function custom_kubelet_up {
     if [ "$1" == "watch" ]; then
         local verbose="-v=2"
     fi
-    $ROOT_DIR/scripts/kubelet.sh run $@ -- -simulate -ready-after=200 $verbose
+    $ROOT_DIR/scripts/kubelet.sh run $@ -- -ready-after=200 $verbose
     sleep 30
 }
 

@@ -5,7 +5,7 @@ kpa:
   stableWindowSeconds: 60
   panicWindowPercentage: 10.0
   panicThresholdPercentage: 200.0
-  MaxScaleUpRate: 1000.0
-  MaxScaleDownRate: 2.0
-  Async: true
+  maxScaleUpRate: 1000.0
+  maxScaleDownRate: 2.0
+  async: true
   scaleDownDelaySeconds: 60

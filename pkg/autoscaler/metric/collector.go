@@ -53,8 +53,8 @@ func (c *Collector) StableAndPanicRequestCount(now time.Time) (float64, float64)
 }
 
 func (c *Collector) Run(ctx context.Context) {
-	logger := klog.FromContext(ctx).WithValues("src", "autoscaler/collector", "key", c.Key)
-	logger.V(1).Info("Starting collector")
+	logger := klog.FromContext(ctx)
+	logger.V(1).Info("Starting collector", "target", c.Key)
 	ticker := time.NewTicker(c.collectInterval)
 	defer ticker.Stop()
 	for {

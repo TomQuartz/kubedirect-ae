@@ -106,7 +106,7 @@ func main() {
 
 	validateFlags()
 	backend.Use(backendFramework)
-	klog.Info("Running trace with options", "backend", backendFramework, "gateway", gatewayFramework, "autoscaler", autoscalerFramework, "autoscaler-config", autoscalerConfig, "loader-config", traceLoaderConfig, "output", outputPath, "dir", baseDir)
+	klog.InfoS("Running trace with options", "backend", backendFramework, "gateway", gatewayFramework, "autoscaler", autoscalerFramework, "autoscaler-config", autoscalerConfig, "loader-config", traceLoaderConfig, "output", outputPath, "dir", baseDir)
 
 	ctx := ctrl.SetupSignalHandler()
 	ctx, cancel := context.WithCancel(ctx)
@@ -170,7 +170,7 @@ func main() {
 	// cancel context to stop everything
 	cancel()
 
-	time.Sleep(5 * time.Second)
+	<-time.After(5 * time.Second)
 	gatewayImpl.Close()
 	<-client.FinishRecv()
 

@@ -48,8 +48,7 @@ func (w *worker) next(nextRequestTime float64) <-chan time.Time {
 
 func (w *worker) send(senderID int) {
 	for reqID, spec := range w.senderInvocations[senderID] {
-		<-w.next(spec.ArrivalTimeSec)
-		now := time.Now()
+		now := <-w.next(spec.ArrivalTimeSec)
 		req := &workload.Request{
 			ID:               fmt.Sprintf("%s-%d/%d", w.target, senderID, reqID),
 			Target:           w.target,
@@ -65,8 +64,8 @@ func (w *worker) send(senderID int) {
 
 // NOTE: ctx is not used to stop senders
 func (w *worker) replay(ctx context.Context, start time.Time) {
-	logger := klog.FromContext(ctx).WithValues("src", "replay/worker", "target", w.target)
-	logger.Info("Starting trace replay")
+	logger := klog.FromContext(ctx).WithValues("target", w.target)
+	logger.Info("Starting trace replay", "senders", w.nSenders, "trace", w.trace.String())
 	w.clientStartTime = start
 	var wg sync.WaitGroup
 	wg.Add(w.nSenders)

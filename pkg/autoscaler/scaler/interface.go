@@ -5,5 +5,5 @@ import (
 )
 
 type Scaler interface {
-	Scale(ctx context.Context, key string, desired int) error
+	Scale(ctx context.Context, key string, desired int) (bool, error)
 }

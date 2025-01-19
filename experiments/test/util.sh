@@ -6,9 +6,9 @@ function kubeadm_up {
     # loop until kubeadm is up
     while true; do
         $ROOT_DIR/scripts/kubeadm.sh test && break
-        sleep 30
+        sleep 10
         $ROOT_DIR/scripts/kubeadm.sh clean
-        sleep 30
+        sleep 60
     done
     sleep 30
 }

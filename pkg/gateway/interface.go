@@ -15,11 +15,11 @@ import (
 )
 
 var (
-	tracingOutputPeriod = 5000
+	tracingOutputPeriod = 5 * time.Second
 )
 
 func StartTracing(period int) {
-	tracingOutputPeriod = period
+	tracingOutputPeriod = time.Duration(period) * time.Second
 }
 
 type Gateway interface {
@@ -77,7 +77,7 @@ func (g *gatewayImpl) register(key string) {
 }
 
 func (g *gatewayImpl) relay(ctx context.Context, key string) {
-	logger := klog.FromContext(ctx).WithValues("src", "gateway", "op", "relay", "key", key)
+	logger := klog.FromContext(ctx)
 	logger.V(1).Info("Starting request/response relay")
 	externalInput := g.externalInputs[key].Out()
 	internalInput := g.internalInputBuffers[key].In()
@@ -85,7 +85,8 @@ func (g *gatewayImpl) relay(ctx context.Context, key string) {
 	internalOutput := g.internalOutputBuffers[key].Out()
 	nSend := 0
 	nRecv := 0
-	outstanding := 0
+	lastTraceSendTime := time.Now()
+	lastTraceRecvTime := time.Now()
 	for {
 		select {
 		case req := <-externalInput:
@@ -98,21 +99,21 @@ func (g *gatewayImpl) relay(ctx context.Context, key string) {
 				externalOutput <- res
 				continue
 			}
-			outstanding++
-			nSend++
-			if nSend%tracingOutputPeriod == 0 {
-				logger.V(1).Info("Forward request", "id", req.ID, "outstanding", outstanding, "send/recv", fmt.Sprintf("%v/%v", nSend, nRecv))
-			}
 			g.onReqIn(req)
 			req.GatewayRecvTS = time.Now()
+			nSend++
+			if req.GatewayRecvTS.Sub(lastTraceSendTime) > tracingOutputPeriod {
+				lastTraceSendTime = req.GatewayRecvTS
+				logger.V(1).Info("[DEBUG][Send]", "id", req.ID, "outstanding", nSend-nRecv, "send/recv", fmt.Sprintf("%v/%v", nSend, nRecv))
+			}
 			internalInput <- req
 		case res := <-internalOutput:
-			outstanding--
-			nRecv++
-			if nRecv%tracingOutputPeriod == 0 {
-				logger.V(1).Info("Receive response", "id", res.Source.ID, "outstanding", outstanding, "send/recv", fmt.Sprintf("%v/%v", nSend, nRecv))
-			}
 			g.onReqOut(res)
+			nRecv++
+			if res.GatewayRecvTS.Sub(lastTraceRecvTime) > tracingOutputPeriod {
+				lastTraceRecvTime = res.GatewayRecvTS
+				logger.V(1).Info("[DEBUG][Recv]", "id", res.Source.ID, "outstanding", nSend-nRecv, "send/recv", fmt.Sprintf("%v/%v", nSend, nRecv))
+			}
 			externalOutput <- res
 		case <-ctx.Done():
 			return

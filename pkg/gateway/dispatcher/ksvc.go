@@ -46,8 +46,8 @@ func (kd *KnServiceDispatcher) Dispatch(ctx context.Context, _ logr.Logger, req 
 }
 
 func (kd *KnServiceDispatcher) Run(ctx context.Context) {
-	logger := klog.FromContext(ctx).WithValues("src", "dispatcher/ksvc", "target", kd.target)
-	logger.V(1).Info("starting Knative Service dispatcher")
+	logger := klog.FromContext(ctx)
+	logger.V(1).Info("starting knative service dispatcher", "target", kd.target)
 	for {
 		select {
 		case req := <-kd.reqChan:

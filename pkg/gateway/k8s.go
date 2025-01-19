@@ -17,6 +17,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	// Kubedirect
+	"github.com/go-logr/logr"
 	"github.com/tomquartz/kubedirect-bench/pkg/autoscaler"
 	"github.com/tomquartz/kubedirect-bench/pkg/backend"
 	"github.com/tomquartz/kubedirect-bench/pkg/gateway/dispatcher"
@@ -26,6 +27,7 @@ import (
 
 type k8sGateway struct {
 	*gatewayImpl
+	logger          logr.Logger
 	client          client.Client
 	dispatchers     map[string]*dispatcher.PodDispatcher
 	autoscaler      autoscaler.Autoscaler
@@ -90,10 +92,10 @@ func (g *k8sGateway) Start(ctx context.Context) error {
 }
 
 func (g *k8sGateway) SetUpWithManager(ctx context.Context, mgr manager.Manager) error {
-	logger := klog.FromContext(ctx).WithValues("gateway", "k8s")
+	logger := klog.FromContext(ctx)
+	g.logger = logger
 
 	g.client = mgr.GetClient()
-
 	// setup a temporary client to list deployments because manager hasn't started yet
 	uncachedClient := benchutil.NewUncachedClientOrDie(mgr)
 
@@ -107,7 +109,7 @@ func (g *k8sGateway) SetUpWithManager(ctx context.Context, mgr manager.Manager) 
 		target := &targets.Items[i]
 		key := workload.KeyFromObject(target)
 		keys = append(keys, key)
-		logger.V(1).Info(fmt.Sprintf("Registering deployment %v", key))
+		logger.V(1).Info(fmt.Sprintf("Registering deployment %v", klog.KObj(target)), "key", key)
 		// register channel
 		g.register(key)
 		reqBuffer, resBuffer := g.internalBuffers(key)
@@ -152,12 +154,12 @@ func (g *k8sGateway) FilterEvent(object client.Object) bool {
 }
 
 func (g *k8sGateway) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	logger := klog.FromContext(ctx).WithValues("gateway", "k8s")
-
 	key := req.NamespacedName.String()
+	logger := g.logger.WithValues("target", key)
+
 	target := &appsv1.Deployment{}
 	if err := g.client.Get(ctx, req.NamespacedName, target); err != nil {
-		logger.Error(err, "Failed to get target deployment", "key", key)
+		logger.Error(err, "Failed to get target deployment")
 		if apierrors.IsNotFound(err) {
 			return ctrl.Result{}, nil
 		}
@@ -170,7 +172,7 @@ func (g *k8sGateway) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		client.InNamespace(target.Namespace),
 		client.MatchingLabels(target.Spec.Template.Labels),
 	); err != nil {
-		logger.Error(err, "Failed to list pods for target deployment", "key", key)
+		logger.Error(err, "Failed to list pods for target deployment")
 	}
 
 	readyPods := make([]*corev1.Pod, 0, len(pods.Items))
@@ -183,11 +185,11 @@ func (g *k8sGateway) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 
 	pd, ok := g.dispatchers[key]
 	if !ok {
-		logger.Info("[WARN] No dispatcher found for target, will ignore", "key", key)
+		logger.Info("[WARN] No dispatcher found for target, will ignore")
 		return ctrl.Result{}, nil
 	}
 	if err := pd.Reconcile(ctx, readyPods); err != nil {
-		logger.Error(err, "Failed to reconcile pod dispatcher", "key", key)
+		logger.Error(err, "Failed to reconcile pod dispatcher")
 		return ctrl.Result{}, err
 	}
 

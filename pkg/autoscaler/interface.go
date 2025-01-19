@@ -73,20 +73,22 @@ func (s *autoscalerImpl) Framework() string {
 }
 
 func (s *autoscalerImpl) scale(ctx context.Context, key string) error {
-	logger := klog.FromContext(ctx).WithValues("autoscaler", s.framework, "op", "scale", "key", key)
+	// logger := klog.FromContext(ctx).WithValues("target", key)
+	logger := s.logger
 	if s.deciders[key] == nil {
 		panic(fmt.Sprintf("Scaling error: no decider for key %v", key))
 	}
-	deployment := &appsv1.Deployment{}
-	if err := s.client.Get(ctx, workload.NamespacedNameFromKey(key), deployment); err != nil {
+	start := time.Now()
+	target := &appsv1.Deployment{}
+	if err := s.client.Get(ctx, workload.NamespacedNameFromKey(key), target); err != nil {
 		return fmt.Errorf("failed to get deployment %v: %v", key, err)
 	}
 
 	var nReady int
 	pods := corev1.PodList{}
 	if err := s.client.List(ctx, &pods,
-		client.InNamespace(deployment.Namespace),
-		client.MatchingLabels(deployment.Spec.Template.Labels),
+		client.InNamespace(target.Namespace),
+		client.MatchingLabels(target.Spec.Template.Labels),
 	); err != nil {
 		return fmt.Errorf("failed to list pods for key %v: %v", key, err)
 	}
@@ -100,13 +102,21 @@ func (s *autoscalerImpl) scale(ctx context.Context, key string) error {
 	if err != nil {
 		return fmt.Errorf("failed to get desired scale for key %v: %v", key, err)
 	}
-	logger.V(1).Info(fmt.Sprintf("scaling %v -> %v", nReady, desired))
-	return s.scaler.Scale(ctx, key, desired)
+	deciderTime := time.Since(start)
+	scaled, err := s.scaler.Scale(ctx, key, desired)
+	if err != nil {
+		return fmt.Errorf("failed to scale %v: %v", key, err)
+	}
+	totalTime := time.Since(start)
+	if scaled {
+		logger.V(1).Info(fmt.Sprintf("Finished scaling %v: %v(%v) -> %v", key, *target.Spec.Replicas, nReady, desired), "elapsed", totalTime, "decider", deciderTime, "scaler", totalTime-deciderTime)
+	}
+	return nil
 }
 
 func (s *autoscalerImpl) Run(ctx context.Context) {
-	logger := klog.FromContext(ctx).WithValues("src", "autoscaler/"+s.framework)
-	logger.Info("starting autoscaler")
+	logger := klog.FromContext(ctx)
+	logger.Info("Starting autoscaler", "framework", s.framework)
 	defer utilruntime.HandleCrashWithContext(ctx)
 	defer s.queue.ShutDown()
 
@@ -127,16 +137,12 @@ func (s *autoscalerImpl) processNextItem(ctx context.Context) bool {
 	// we do not requeue in any cases
 	defer s.queue.Forget(key)
 
-	start := time.Now()
-	s.logger.V(1).Info(fmt.Sprintf("Start scaling %v", key))
 	if err := s.scale(ctx, key); err != nil {
 		s.logger.Error(err, fmt.Sprintf("Failed to scale %v", key))
 		// etcd error
 		if strings.Contains(err.Error(), "mvcc") {
 			panic(err.Error())
 		}
-	} else {
-		s.logger.V(1).Info(fmt.Sprintf("Finish scaling %v after %v ms", key, time.Since(start).Milliseconds()))
 	}
 	return true
 }

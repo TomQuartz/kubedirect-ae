@@ -88,3 +88,7 @@ type TraceSpec struct {
 	DurationMinutes int
 	Invocations     []*InvocationSpec
 }
+
+func (t *TraceSpec) String() string {
+	return fmt.Sprintf("Duration: %vm, Invocations: %v", t.DurationMinutes, len(t.Invocations))
+}

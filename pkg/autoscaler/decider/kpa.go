@@ -60,8 +60,8 @@ var _ Decider = &KPADecider{}
 
 func (k *KPADecider) Activate(ctx context.Context) bool {
 	if atomic.CompareAndSwapInt32(&k.active, 0, 1) {
-		logger := klog.FromContext(ctx).WithValues("src", "autoscaler/kpa", "key", k.Key)
-		logger.V(1).Info("Starting KPA decider")
+		logger := klog.FromContext(ctx)
+		logger.V(1).Info("Starting KPA decider", "target", k.Key)
 		go k.Collector.Run(ctx)
 		return true
 	}
@@ -69,7 +69,7 @@ func (k *KPADecider) Activate(ctx context.Context) bool {
 }
 
 func (k *KPADecider) Reconcile(ctx context.Context, now time.Time, currentReady int) (int, error) {
-	logger := klog.FromContext(ctx).WithValues("src", "autoscaler/decider/kpa", "key", k.Key, "time", now)
+	logger := klog.FromContext(ctx).WithValues("target", k.Key)
 
 	observedStableValue, observedPanicValue, observedInstantValue := k.StableAndPanicAndInstantConcurrency(now)
 
@@ -147,7 +147,7 @@ func (k *KPADecider) Reconcile(ctx context.Context, now time.Time, currentReady 
 		}
 	}
 
-	logger.V(1).Info(fmt.Sprintf("[decider/kpa] %v"+
+	logger.V(2).Info(fmt.Sprintf("[decider/kpa] %v"+
 		" | Mode: %v"+
 		" | Concurrency: stable=%0.3f panic=%0.3f target=%0.3f"+
 		" | Scaling: current=%d desired=%d stable=%d(%0.0f) panic=%d(%0.0f) delay=%d range=[%0.0f, %0.0f]",

@@ -43,7 +43,7 @@ func NewOneTimeAutoscaler(
 	cfg *OneTimeAutoscalerConfig,
 	keys ...string,
 ) (*OneTimeAutoscaler, error) {
-	logger := klog.FromContext(ctx).WithValues("src", "autoscaler/aquatope", "op", "init")
+	logger := klog.FromContext(ctx)
 	s := &OneTimeAutoscaler{
 		seen:         make(map[string]bool),
 		initialScale: cfg.InitialScale,
@@ -81,9 +81,8 @@ func (s *OneTimeAutoscaler) ReqIn(req *workload.Request) {
 	if !s.seen[key] {
 		s.seen[key] = true
 		go func() {
-			logger := klog.FromContext(s.runCtx).WithValues("src", "autoscaler/onetime", "op", "scale")
-			if err := s.scaler.Scale(s.runCtx, key, s.initialScale); err != nil {
-				logger.Error(err, "failed to scale")
+			if _, err := s.scaler.Scale(s.runCtx, key, s.initialScale); err != nil {
+				klog.FromContext(s.runCtx).Error(err, "failed to scale")
 			}
 		}()
 	}

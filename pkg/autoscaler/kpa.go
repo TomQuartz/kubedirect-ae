@@ -47,7 +47,7 @@ func NewKnativeAutoscaler(
 	cfg *KnativeAutoscalerConfig,
 	keys ...string,
 ) (*KnativeAutoscaler, error) {
-	logger := klog.FromContext(ctx).WithValues("src", "autoscaler/kpa", "op", "init")
+	logger := klog.FromContext(ctx)
 	s := &KnativeAutoscaler{
 		autoscalerImpl: &autoscalerImpl{
 			framework:    "kpa",

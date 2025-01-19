@@ -38,7 +38,7 @@ type Client struct {
 }
 
 func NewClient(ctx context.Context, gateway gateway.Gateway, loaderConfig string, outputPath string) (*Client, error) {
-	logger := klog.FromContext(ctx).WithValues("src", "client/new")
+	logger := klog.FromContext(ctx)
 
 	logger.Info("Loading trace specs...", "config", loaderConfig)
 	traces := workload.LoadTraceFromConfig(loaderConfig)
@@ -60,7 +60,7 @@ func NewClient(ctx context.Context, gateway gateway.Gateway, loaderConfig string
 }
 
 func (c *Client) SetupWithManager(ctx context.Context, mgr manager.Manager) error {
-	logger := klog.FromContext(ctx).WithValues("src", "client/setup")
+	logger := klog.FromContext(ctx)
 
 	c.client = mgr.GetClient()
 
@@ -81,7 +81,9 @@ func (c *Client) SetupWithManager(ctx context.Context, mgr manager.Manager) erro
 	for i := range targets.Items {
 		target := &targets.Items[i]
 		key := workload.KeyFromObject(target)
-		c.workers[key] = newWorker(key, c.traces[i], c.gateway.RequestChan(key))
+		wrk := newWorker(key, c.traces[i], c.gateway.RequestChan(key))
+		c.workers[key] = wrk
+		logger.V(1).Info(fmt.Sprintf("Registered worker %v", key), "senders", wrk.nSenders, "trace", wrk.trace.String())
 	}
 	logger.Info("All workers registered", "total", len(c.workers))
 	return nil
@@ -90,7 +92,6 @@ func (c *Client) SetupWithManager(ctx context.Context, mgr manager.Manager) erro
 // does not rely on ctx to stop
 // it stops itself when the gateway closes the response channel
 func (c *Client) recv(_ context.Context) {
-	// logger := klog.FromContext(ctx).WithValues("src", "client/recv")
 	writerChan := chann.New[*workload.Response]()
 	defer writerChan.Close()
 	go c.write(writerChan.Out())
@@ -137,7 +138,7 @@ func (c *Client) FinishRecv() <-chan struct{} {
 
 // NOTE: ctx is not used to stop the client
 func (c *Client) Start(ctx context.Context) error {
-	logger := klog.FromContext(ctx).WithValues("src", "client/start")
+	logger := klog.FromContext(ctx)
 
 	// start workers for traces
 	start := time.Now()

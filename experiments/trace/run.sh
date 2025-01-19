@@ -22,7 +22,6 @@ arg_output="-output=trace.log"
 baseline=$1
 case $baseline in
     "kd")
-        
         trace_template="config/kd.ksvc.template.yaml"
         arg_gateway="-gateway=knative"
         ;;
@@ -32,14 +31,14 @@ case $baseline in
         workload_daemonset="config/k8s.daemonset.yaml"
         arg_gateway="-gateway=k8s"
         arg_autoscaler="-autoscaler=kpa"
-        arg_autoscaler_config="-autoscaler-config=config/autoscaler.knative.json"
+        arg_autoscaler_config="-autoscaler-config=config/autoscaler.knative.yaml"
         ;;
     "kd+")
         trace_template="config/kd.deployment.template.yaml"
         workload_daemonset="config/kd.daemonset.yaml"
         arg_gateway="-gateway=k8s"
         arg_autoscaler="-autoscaler=kpa"
-        arg_autoscaler_config="-autoscaler-config=config/autoscaler.dirigent.json"
+        arg_autoscaler_config="-autoscaler-config=config/autoscaler.dirigent.yaml"
         ;;
     *)
         echo "Usage: $USAGE"

@@ -21,12 +21,12 @@ import (
 
 const (
 	podServiceConcurrency     = 1
-	podServiceDispatchTimeout = 15 * time.Second
+	podServiceDispatchTimeout = 300 * time.Second
 )
 
 // NOTE: we index by both pod name and ip:port to handle pod restarts and/or ip reuse for different pods
 var podEndpointKeyFunc = func(pod *corev1.Pod) (key string, ep string) {
-	ep = fmt.Sprintf("%s:%s", pod.Status.PodIP, handler.WorkloadServicePort)
+	ep = pod.Status.PodIP + handler.WorkloadServicePort
 	key = fmt.Sprintf("%s@%s", pod.Name, ep)
 	return
 }
@@ -89,8 +89,7 @@ func (pd *PodDispatcher) Dispatch(ctx context.Context, logger logr.Logger, req *
 }
 
 func (pd *PodDispatcher) Reconcile(ctx context.Context, readyPods []*corev1.Pod) error {
-	logger := klog.FromContext(ctx).WithValues("src", "dispatcher/pod", "target", pd.target)
-	logger.V(1).Info("Reconciling pod dispatcher")
+	logger := pd.logger
 
 	endpoints := make(map[string]string)
 	for _, pod := range readyPods {
@@ -116,6 +115,9 @@ func (pd *PodDispatcher) Reconcile(ctx context.Context, readyPods []*corev1.Pod)
 		}
 		return add, del
 	}()
+	if len(add) > 0 || len(del) > 0 {
+		logger.V(1).Info("Reconciling", "ready", len(endpoints), "add", len(add), "del", len(del))
+	}
 
 	// add new endpoints in parallel
 	var wg sync.WaitGroup
@@ -155,7 +157,7 @@ func (pd *PodDispatcher) Reconcile(ctx context.Context, readyPods []*corev1.Pod)
 }
 
 func (pd *PodDispatcher) Run(ctx context.Context) {
-	logger := klog.FromContext(ctx).WithValues("src", "dispatcher/pod", "target", pd.target)
+	logger := klog.FromContext(ctx).WithValues("target", pd.target)
 	logger.V(1).Info("Starting pod dispatcher")
 	pd.logger = logger
 	for {

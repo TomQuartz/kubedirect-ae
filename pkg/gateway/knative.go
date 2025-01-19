@@ -57,12 +57,10 @@ func (g *knativeGateway) SetUpWithManager(ctx context.Context, mgr manager.Manag
 	if err != nil {
 		return fmt.Errorf("error listing kn services in knative gateway: %v", err)
 	}
-	keys := []string{}
 	for i := range knServices.Items {
 		service := &knServices.Items[i]
 		key := workload.KeyFromObject(service)
-		keys = append(keys, key)
-		logger.V(1).Info("Registering knative service", "key", key)
+		logger.V(1).Info(fmt.Sprintf("Registering ksv %v", klog.KObj(service)), "key", key)
 		// register channel
 		g.register(key)
 		reqBuffer, resBuffer := g.internalBuffers(key)
@@ -70,7 +68,7 @@ func (g *knativeGateway) SetUpWithManager(ctx context.Context, mgr manager.Manag
 		url := service.Status.URL.String()
 		kd, err := dispatcher.NewKnServiceDispatcher(ctx, key, reqBuffer, resBuffer, url)
 		if err != nil {
-			return fmt.Errorf("Failed to create knative service dispatcher for %v (%v): %v", klog.KObj(service), url, err)
+			return fmt.Errorf("failed to create knative service dispatcher for %v (%v): %v", klog.KObj(service), url, err)
 		}
 		g.dispatchers[key] = kd
 	}
