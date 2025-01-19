@@ -5,14 +5,18 @@ metadata:
   labels:
     kubedirect/template: "true"
     kubedirect/owner-name: ${NAME}
-  annotations:
-    # NOTE: to apply the labels to the generated pods, use the kubedirect/moved-labels annotation
-    kubedirect/moved-labels: '{"kubedirect/pod-lifecycle":"$LIFECYCLE"}'
+    kubedirect/pod-lifecycle: "${LIFECYCLE}"
+  # annotations:
+  #   # NOTE: to apply the labels to the generated pods, use the kubedirect/moved-labels annotation
+  #   kubedirect/moved-labels: '{"kubedirect/pod-lifecycle":"$LIFECYCLE"}'
 spec:
   automountServiceAccountToken: false
+  terminationGracePeriodSeconds: 5
   containers:
   - name: ${NAME}
-    image: ${IMAGE}
+    image: alpine:3.21
+    command: [ "/bin/sh", "-c", "--" ]
+    args: [ "trap exit TERM INT; sleep infinity & wait" ]
     # always use cached image
     # NOTE: use crictl or a daemonset to pre-pull the image
     imagePullPolicy: Never

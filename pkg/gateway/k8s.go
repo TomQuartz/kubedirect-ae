@@ -140,7 +140,7 @@ func (g *k8sGateway) SetUpWithManager(ctx context.Context, mgr manager.Manager) 
 		WithOptions(controller.Options{
 			MaxConcurrentReconciles: 256,
 		}).
-		Named("gateway/k8s").
+		Named("gateway_k8s").
 		Watches(&corev1.Pod{}, enqueueWorkload).
 		Watches(&appsv1.Deployment{}, enqueueWorkload).
 		WithEventFilter(predicate.NewPredicateFuncs(g.FilterEvent)).

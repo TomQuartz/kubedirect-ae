@@ -170,6 +170,7 @@ func main() {
 	// cancel context to stop everything
 	cancel()
 
+	time.Sleep(5 * time.Second)
 	gatewayImpl.Close()
 	<-client.FinishRecv()
 

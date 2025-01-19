@@ -19,8 +19,8 @@ spec:
       automountServiceAccountToken: false
       containers:
       - name: test-daemonset
-        image: alpine:latest
+        image: alpine:3.21
         command: [ "/bin/sh", "-c", "--" ]
-        args: [ "trap : TERM INT; sleep infinity & wait" ]
+        args: [ "trap exit TERM INT; sleep infinity & wait" ]
         # NOTE: always use the latest image
         imagePullPolicy: Always

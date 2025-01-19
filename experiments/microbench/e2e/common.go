@@ -77,6 +77,7 @@ func (m *PodMonitor) SetupWithManager(ctx context.Context, mgr ctrl.Manager) err
 		// WithOptions(controller.Options{
 		// 	MaxConcurrentReconciles: 256,
 		// }).
+		Named("e2e_pod").
 		WithEventFilter(predicate.NewPredicateFuncs(m.FilterEvent)).
 		Watches(&corev1.Pod{}, handler.Funcs{
 			CreateFunc: func(_ context.Context, ev event.CreateEvent, q CtrlWorkQueue) {
@@ -159,7 +160,6 @@ func run(ctx context.Context, mgr manager.Manager, selector string, nPods int) {
 		nPodsPerTarget = 1
 	}
 	nPods = nPodsPerTarget * len(targets.Items)
-	klog.Infof("Scaling up %d pods over %d deployments", nPods, len(targets.Items))
 
 	wg := &sync.WaitGroup{}
 	wg.Add(nPods)
@@ -168,6 +168,7 @@ func run(ctx context.Context, mgr manager.Manager, selector string, nPods int) {
 		monitor.Watch(wg, workload.KeyFromObject(target))
 	}
 
+	klog.Infof("Scaling up %d targets, %d pods each", len(targets.Items), nPodsPerTarget)
 	start := time.Now()
 	for i := range targets.Items {
 		target := &targets.Items[i]
@@ -180,6 +181,7 @@ func run(ctx context.Context, mgr manager.Manager, selector string, nPods int) {
 		}()
 	}
 	wg.Wait()
+	klog.Info("Done")
 
 	fmt.Printf("total: %v us\n", time.Since(start).Microseconds())
 }

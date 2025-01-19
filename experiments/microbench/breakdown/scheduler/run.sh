@@ -10,7 +10,7 @@ USAGE="run.sh k8s|kd #pods"
 # NOTE: must also export LIFECYCLE=custom env var
 
 export WORKLOAD=${WORKLOAD:-"test-scheduler"}
-export IMAGE=${IMAGE:-"gcr.io/google-samples/kubernetes-bootcamp:v1"}
+# export IMAGE=${IMAGE:-"gcr.io/google-samples/kubernetes-bootcamp:v1"}
 
 baseline=$1
 case $baseline in
@@ -44,4 +44,5 @@ read -p "Press enter to continue..."
 go run . -baseline $baseline -target $WORKLOAD -n $n_pods >result.log 2>stderr.log
 
 # cleanup
+sleep 30
 cat config/template-pod.yaml | envsubst | kubectl delete -f -

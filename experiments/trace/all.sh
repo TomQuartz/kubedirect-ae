@@ -15,7 +15,7 @@ kubeadm_up # debug
 
 # custom data plane
 custom_kubelet_up # watch
-for baseline in (k8s+ kd+); do
+for baseline in k8s+ kd+; do
     setup_dirs $baseline || continue
     ./run.sh $baseline $n_traces -- -backend=grpc -v=$verbosity
     cp ./trace.log $RESULTS/$baseline.$n_traces.log
@@ -25,7 +25,7 @@ custom_kubelet_down
 
 # knative data plane
 knative_up
-for baseline in (kd); do
+for baseline in kd ; do
     setup_dirs $baseline || continue
     ./run.sh $baseline $n_traces -- -backend=grpc -v=$verbosity
     cp ./trace.log $RESULTS/$baseline.$n_traces.log

@@ -22,12 +22,15 @@ function kubeadm_up {
 
 function kubeadm_down {
     $ROOT_DIR/scripts/kubeadm.sh clean
-    sleep 30
+    sleep 60
 }
 
 # usage: custom_kubelet_up [watch] [#workers]
 function custom_kubelet_up {
-    $ROOT_DIR/scripts/kubelet.sh run $@ -- -simulate -ready-after=200
+    if [ "$1" == "watch" ]; then
+        local verbose="-v=2"
+    fi
+    $ROOT_DIR/scripts/kubelet.sh run $@ -- -simulate -ready-after=200 $verbose
     sleep 30
 }
 

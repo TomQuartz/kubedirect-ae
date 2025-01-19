@@ -19,8 +19,11 @@ spec:
         # kubedirect/workload-pool: ${WORKLOAD}
     spec:
       automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 5
       containers:
       - name: ${NAME}
-        image: ${IMAGE}
+        image: alpine:3.21
+        command: [ "/bin/sh", "-c", "--" ]
+        args: [ "trap exit TERM INT; sleep infinity & wait" ]
         # NOTE: always use the latest image
         imagePullPolicy: Always

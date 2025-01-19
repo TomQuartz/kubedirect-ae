@@ -46,7 +46,7 @@ func main() {
 	flag.StringVar(&baseline, "baseline", "kubelet", "Baseline for the experiment. Options: kubelet, custom")
 	flag.StringVar(&target, "target", "", "target ReplicaSet name")
 	flag.StringVar(&node, "node", "", "target node name")
-	flag.IntVar(&nPods, "n", 100, "Number of pods to scale up on the target node")
+	flag.IntVar(&nPods, "n", 10, "Number of pods to scale up on the target node")
 	flag.Parse()
 
 	ctx := ctrl.SetupSignalHandler()
@@ -61,6 +61,7 @@ func main() {
 
 	mgr := benchutil.NewManagerOrDie()
 
+	klog.InfoS("Starting experiment", "baseline", baseline, "target", target, "node", node, "nPods", nPods)
 	if baseline == "kubelet" {
 		run(ctx, mgr, node, target, nPods, true)
 	} else if baseline == "custom" {

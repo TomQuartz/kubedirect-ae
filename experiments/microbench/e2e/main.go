@@ -47,7 +47,7 @@ func main() {
 	// NOTE: should create the deployments ahead of time
 	flag.StringVar(&baseline, "baseline", "k8s", "Baseline for the experiment. Options: k8s, k8s+, kd, kd+")
 	flag.StringVar(&selector, "selector", "test", "Select Deployments with `workload=$selector` selector")
-	flag.IntVar(&nPods, "n", 100, "Total number of pods to scale up")
+	flag.IntVar(&nPods, "n", 0, "Total number of pods to scale up. If 0, equal to the number of selected Deployments")
 	flag.Parse()
 
 	ctx := ctrl.SetupSignalHandler()
@@ -59,6 +59,7 @@ func main() {
 
 	mgr := benchutil.NewManagerOrDie()
 
+	klog.InfoS("Starting experiment", "baseline", baseline, "selector", selector, "nPods", nPods)
 	switch baseline {
 	case "k8s", "k8s+", "kd", "kd+":
 	default:

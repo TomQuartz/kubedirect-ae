@@ -13,9 +13,10 @@ RUN=${1:-"test"}
 
 setup_dirs scale-pods || exit 0
 
-# N_PODS=(100 200 400 800)
-N_PODS=(100)
-n_nodes=100
+N_PODS=(100 200 300 600)
+n_nodes=75
+# N_PODS=(40)
+# n_nodes=2
 
 # usage: run_cmd $name $cmd $baselines...
 function run_cmd {

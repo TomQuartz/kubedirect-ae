@@ -88,6 +88,7 @@ func newSchedulerLister(ctx context.Context, uncachedClient client.Client) func(
 func run(ctx context.Context, mgr manager.Manager, target string, nPods int, fallback bool) {
 	uncachedClient := benchutil.NewUncachedClientOrDie(mgr)
 
+	klog.Info("Starting KD client")
 	schedulerLister := newSchedulerLister(ctx, uncachedClient)
 	kdClientHub := kdrpc.NewEventedClientHub(testClient, schedService, kdproto.NewSchedulerClient).
 		WithHandshake(doSchedulerHandshake).
@@ -134,11 +135,13 @@ func run(ctx context.Context, mgr manager.Manager, target string, nPods int, fal
 	req := kdrpc.NewPodSchedulingRequest(kdClient, fakeReplicaSet, nPods)
 	req.Blocking = true
 
+	klog.Infof("Scheduling %d pods", nPods)
 	start := time.Now()
 	if _, err := kdClient.Client().SchedulePods(ctx, req); err != nil {
 		klog.Error(err, "Error scheduling pods", "target", klog.KObj(fakeReplicaSet))
 		os.Exit(1)
 	}
+	klog.Info("Done")
 
 	fmt.Printf("total: %v us\n", time.Since(start).Microseconds())
 }

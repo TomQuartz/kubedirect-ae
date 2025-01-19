@@ -8,7 +8,7 @@ set -x
 USAGE="run.sh k8s|kd #deployments [#pods]"
 
 export WORKLOAD=${WORKLOAD:-"test-autoscaler"}
-export IMAGE=${IMAGE:-"gcr.io/google-samples/kubernetes-bootcamp:v1"}
+# export IMAGE=${IMAGE:-"gcr.io/google-samples/kubernetes-bootcamp:v1"}
 
 baseline=$1
 case $baseline in
@@ -50,4 +50,5 @@ read -p "Press enter to continue..."
 go run . -baseline $baseline -selector $WORKLOAD -n $n_pods >result.log 2>stderr.log
 
 # cleanup
+sleep 30
 kubectl delete deployment -l workload=$WORKLOAD

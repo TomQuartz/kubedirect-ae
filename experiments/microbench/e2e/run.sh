@@ -5,10 +5,10 @@ cd $BASE_DIR
 
 set -x
 
-USAGE="run.sh k8s|kd|k8s+|kd+ #deployments #pods"
+USAGE="run.sh k8s|kd|k8s+|kd+ #deployments [#pods]"
 
 export WORKLOAD=${WORKLOAD:-"test-e2e"}
-export IMAGE=${IMAGE:-"gcr.io/google-samples/kubernetes-bootcamp:v1"}
+# export IMAGE=${IMAGE:-"gcr.io/google-samples/kubernetes-bootcamp:v1"}
 
 baseline=$1
 case $baseline in
@@ -40,12 +40,11 @@ if ! [[ -n "$1" && "$1" =~ ^[0-9]*$ ]]; then
 fi
 shift
 
-n_pods=$1
-if ! [[ -n "$1" && "$1" =~ ^[0-9]*$ ]]; then
+n_pods=${1:-"0"}
+if ! [[ "$n_pods" =~ ^[0-9]*$ ]]; then
     echo "Usage: $USAGE"
     exit 1
 fi
-shift
 
 echo "Running e2e scaling experiment: baseline=$baseline, selector=$WORKLOAD, #deployments=$n_deployments, #pods=$n_pods"
 
@@ -64,5 +63,6 @@ read -p "Press enter to continue..."
 go run . -baseline $baseline -selector $WORKLOAD -n $n_pods >result.log 2>stderr.log
 
 # cleanup
+sleep 30
 kubectl delete deployment -l workload=$WORKLOAD
 cat config/daemonset.yaml | envsubst | kubectl delete -f -

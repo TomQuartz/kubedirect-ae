@@ -40,7 +40,7 @@ func main() {
 
 	flag.StringVar(&baseline, "baseline", "k8s", "Baseline for the experiment. Options: k8s, kd")
 	flag.StringVar(&selector, "selector", "", "Select ReplicaSets with `workload=$selector` selector")
-	flag.IntVar(&nPods, "n", 100, "Total number of pods to scale up")
+	flag.IntVar(&nPods, "n", 0, "Total number of pods to scale up. If 0, equal to the number of selected ReplicaSets")
 	flag.Parse()
 
 	ctx := ctrl.SetupSignalHandler()
@@ -52,6 +52,7 @@ func main() {
 
 	mgr := benchutil.NewManagerOrDie()
 
+	klog.InfoS("Starting experiment", "baseline", baseline, "selector", selector, "nPods", nPods)
 	if baseline == "k8s" {
 		runK8s(ctx, mgr, selector, nPods)
 	} else if baseline == "kd" {

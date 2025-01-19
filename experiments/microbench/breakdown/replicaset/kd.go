@@ -91,6 +91,7 @@ func newSchedulerLister(ctx context.Context, uncachedClient client.Client) func(
 func runKd(ctx context.Context, mgr manager.Manager, selector string, nPods int) {
 	uncachedClient := benchutil.NewUncachedClientOrDie(mgr)
 
+	klog.Info("Starting KD client")
 	schedulerLister := newSchedulerLister(ctx, uncachedClient)
 	kdClientHub := kdrpc.NewEventedClientHub("test", "sched", kdproto.NewSchedulerClient).
 		WithHandshake(doSchedulerHandshake).
@@ -125,6 +126,7 @@ func runKd(ctx context.Context, mgr manager.Manager, selector string, nPods int)
 		nPodsPerTarget = 1
 	}
 
+	klog.Infof("Scaling up %d targets, %d pods each", len(targets.Items), nPodsPerTarget)
 	var wg sync.WaitGroup
 	wg.Add(len(targets.Items))
 	start := time.Now()
@@ -140,6 +142,7 @@ func runKd(ctx context.Context, mgr manager.Manager, selector string, nPods int)
 		}()
 	}
 	wg.Wait()
+	klog.Info("Done")
 
 	fmt.Printf("total: %v us\n", time.Since(start).Microseconds())
 }

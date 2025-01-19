@@ -189,6 +189,7 @@ syncFrequency: 0s
 volumeStatsAggPeriod: 0s
 featureGates:
   EventedPLEG: true
+  SidecarContainers: false
 kubeAPIQPS: 200
 kubeAPIBurst: 400
 serializeImagePulls: false

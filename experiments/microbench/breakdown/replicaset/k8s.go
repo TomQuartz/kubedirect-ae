@@ -76,6 +76,7 @@ func (m *ReplicaSetMonitor) SetupWithManager(ctx context.Context, mgr ctrl.Manag
 		// WithOptions(controller.Options{
 		// 	MaxConcurrentReconciles: 256,
 		// }).
+		Named("breakdown_replicaset").
 		WithEventFilter(predicate.NewPredicateFuncs(m.FilterEvent)).
 		Watches(&appsv1.ReplicaSet{}, handler.Funcs{
 			CreateFunc: func(_ context.Context, ev event.CreateEvent, q CtrlWorkQueue) {
@@ -153,9 +154,9 @@ func runK8s(ctx context.Context, mgr manager.Manager, selector string, nPods int
 	if !mgr.GetCache().WaitForCacheSync(ctx) {
 		klog.Fatalf("Cannot syncing manager cache")
 	}
+	mgrClient := mgr.GetClient()
 
 	targets := &appsv1.ReplicaSetList{}
-	mgrClient := mgr.GetClient()
 	listOpts := append(
 		[]client.ListOption{client.MatchingLabels{"workload": selector}},
 		workload.CtrlListOptions...,
@@ -180,6 +181,7 @@ func runK8s(ctx context.Context, mgr manager.Manager, selector string, nPods int
 		monitor.Watch(wg, workload.KeyFromObject(target), nPodsPerTarget)
 	}
 
+	klog.Infof("Scaling up %d targets, %d pods each", len(targets.Items), nPodsPerTarget)
 	start := time.Now()
 	for i := range targets.Items {
 		target := &targets.Items[i]
@@ -192,6 +194,7 @@ func runK8s(ctx context.Context, mgr manager.Manager, selector string, nPods int
 		}()
 	}
 	wg.Wait()
+	klog.Info("Done")
 
 	fmt.Printf("total: %v us\n", time.Since(start).Microseconds())
 }

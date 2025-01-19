@@ -26,6 +26,16 @@ function run_kubeadm {
     sudo rm -rf $LOG_DIR/kubeadm/*
     rm -rf $MANIFESTS_DIR/kubeadm/_tmp_*
 
+    # ensure ports
+    critical_ports=("6443" "2379" "2380" "10250" "10251" "10252" "10256" "10257" "53" "4443")
+    for port in ${critical_ports[@]} ; do
+        pid=$(sudo lsof -t -i :$port) || continue
+        if [ -n "$pid" ]; then
+            echo "port $port is in use by $pid"
+            sudo kill -9 $pid
+        fi
+    done
+
     # kubeadm init
     master_ip=$(ip -4 addr show | grep -oP 'inet 10\.\S+' | awk '{print $2}' | cut -d/ -f1)
     MASTER_IP=$master_ip envsubst < $MANIFESTS_DIR/kubeadm/$INIT_CONFIG > $MANIFESTS_DIR/kubeadm/_tmp_.$INIT_CONFIG
@@ -125,7 +135,6 @@ function clean_kubeadm {
             sudo journalctl --rotate --vacuum-time=1s
             sudo rm -rf /var/lib/kubelet/*
             sudo rm -rf /var/lib/etcd/*
-            sudo rm -rf /etc/cni/net.d/*flannel*
             sudo iptables -F
             sudo iptables -t nat -F
             sudo iptables -t mangle -F
@@ -133,7 +142,11 @@ function clean_kubeadm {
             sudo ifconfig flannel.1 down
             sudo ip link delete flannel.1
             sudo ifconfig cni0 down
+            sudo brctl delbr cni0
             sudo ip link delete cni0
+            # NOTE: simply sudo rm -rf /* won't work
+            sudo rm -rf /var/lib/cni
+            sudo find /etc/cni/net.d -name "*flannel*" | xargs sudo rm -rf
             sudo systemctl restart docker.service docker.socket
             rm -rf ~/.kube
 EOF
@@ -165,7 +178,8 @@ clean)
     clean_kubeadm
     ;;
 test)
-    run_kubeadm debug
+    shift
+    run_kubeadm $1 debug
     watch_control_plane
     watch_kubelet
     ;;

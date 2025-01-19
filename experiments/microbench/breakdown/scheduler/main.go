@@ -53,6 +53,7 @@ func main() {
 
 	mgr := benchutil.NewManagerOrDie()
 
+	klog.InfoS("Starting experiment", "baseline", baseline, "target", target, "nPods", nPods)
 	if baseline == "k8s" {
 		run(ctx, mgr, target, nPods, true)
 	} else if baseline == "kd" {

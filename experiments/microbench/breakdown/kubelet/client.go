@@ -107,8 +107,9 @@ func newBindingRequests(kdClient kdrpc.ClientInterface[kdproto.KubeletClient], p
 func run(ctx context.Context, mgr manager.Manager, nodeName string, target string, nPods int, useDefaultKubelet bool) {
 	uncachedClient := benchutil.NewUncachedClientOrDie(mgr)
 
+	klog.Info("Starting KD client")
 	kubeletLister := newKubeletLister(ctx, uncachedClient, nodeName, !useDefaultKubelet)
-	kdClientHub := kdrpc.NewEventedClientHub(testClient, nodeName, kdproto.NewKubeletClient).
+	kdClientHub := kdrpc.NewEventedClientHub(kdClientKeyFunc(nodeName), nodeName, kdproto.NewKubeletClient).
 		WithHandshake(doKubeletHandshake).
 		WithDialOptions(dialTimeout, dialInterval).
 		WithAddrLister(kubeletLister)
@@ -155,6 +156,18 @@ func run(ctx context.Context, mgr manager.Manager, nodeName string, target strin
 	wg.Add(len(reqs))
 	monitor.Watch(wg, podInfos)
 
+	klog.Info("Starting manager")
+	go func() {
+		if err := mgr.Start(ctx); err != nil {
+			klog.Fatalf("Error running manager: %v", err)
+		}
+	}()
+
+	if !mgr.GetCache().WaitForCacheSync(ctx) {
+		klog.Fatalf("Cannot syncing manager cache")
+	}
+
+	klog.Infof("Instantiating %d pods on %s", nPods, nodeName)
 	start := time.Now()
 	for i := range reqs {
 		go func(i int) {
@@ -165,6 +178,7 @@ func run(ctx context.Context, mgr manager.Manager, nodeName string, target strin
 		}(i)
 	}
 	wg.Wait()
+	klog.Info("Done")
 
 	fmt.Printf("total: %v us\n", time.Since(start).Microseconds())
 }

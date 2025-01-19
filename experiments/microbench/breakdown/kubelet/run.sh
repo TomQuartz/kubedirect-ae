@@ -3,10 +3,12 @@
 BASE_DIR=`realpath $(dirname $0)`
 cd $BASE_DIR
 
+set -x
+
 USAGE="run.sh kubelet|custom #pods"
 
 export WORKLOAD=${WORKLOAD:-"test-kubelet"}
-export IMAGE=${IMAGE:-"gcr.io/google-samples/kubernetes-bootcamp:v1"}
+# export IMAGE=${IMAGE:-"gcr.io/google-samples/kubernetes-bootcamp:v1"}
 
 baseline=$1
 case $baseline in
@@ -45,8 +47,9 @@ cat config/daemonset.yaml | envsubst | kubectl apply -f -
 read -p "Press enter to continue..."
 # sleep 60
 
-go run . -baseline $baseline -target $WORKLOAD -n $n_pods >result.log 2>stderr.log
+go run . -baseline $baseline -target $WORKLOAD -node $node -n $n_pods >result.log 2>stderr.log
 
 # cleanup
+sleep 30
 cat config/template-pod.yaml | envsubst | kubectl delete -f -
 cat config/daemonset.yaml | envsubst | kubectl delete -f -

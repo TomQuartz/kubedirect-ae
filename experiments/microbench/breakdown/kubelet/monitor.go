@@ -78,6 +78,7 @@ func (m *PodMonitor) SetupWithManager(ctx context.Context, mgr ctrl.Manager) err
 		// WithOptions(controller.Options{
 		// 	MaxConcurrentReconciles: 256,
 		// }).
+		Named("breakdown_kubelet").
 		WithEventFilter(predicate.NewPredicateFuncs(m.FilterEvent)).
 		Watches(&corev1.Pod{}, handler.Funcs{
 			CreateFunc: func(_ context.Context, ev event.CreateEvent, q CtrlWorkQueue) {

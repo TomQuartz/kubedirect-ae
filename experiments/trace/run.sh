@@ -90,6 +90,7 @@ go run . $@ $arg_gateway $arg_backend $arg_autoscaler $arg_autoscaler_config $ar
     >stderr.log 2>&1
 
 # cleanup
+sleep 30
 kubectl delete deployment -l workload=trace || true
 kubectl delete ksvc -l workload=trace || true
 cat $workload_daemonset | envsubst | kubectl delete -f -
