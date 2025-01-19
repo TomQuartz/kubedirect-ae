@@ -27,7 +27,7 @@ function run_kubeadm {
     rm -rf $MANIFESTS_DIR/kubeadm/_tmp_*
 
     # ensure ports
-    critical_ports=("6443" "2379" "2380" "10250" "10251" "10252" "10256" "10257" "53" "4443")
+    critical_ports=("6443" "2379" "2380" "10250" "10251" "10252" "10256" "10257" "4443")
     for port in ${critical_ports[@]} ; do
         pid=$(sudo lsof -t -i :$port) || continue
         if [ -n "$pid" ]; then
@@ -48,6 +48,17 @@ function run_kubeadm {
 
     sleep 30
     kubectl apply -f $MANIFESTS_DIR/kubeadm/$CNI_CONFIG
+
+    # check cni
+    sleep 10
+    cni0=$(ifconfig cni0 | grep 'inet ' | awk '{print $2}') || true
+    flannel1=$(ifconfig flannel.1 | grep 'inet ' | awk '{print $2}') || true
+    cni0_prefix=$(echo $cni0 | cut -d '.' -f 1-2)
+    flannel1_prefix=$(echo $flannel1 | cut -d '.' -f 1-2)
+    if [ "$cni0_prefix" != "$flannel1_prefix" ]; then
+        echo "cni0 ($cni0) and flannel1 ($flannel1) are not in the same subnet"
+        exit 1
+    fi
 
     api_endpoint=$(cat $ROOT_DIR/init.log | grep -oP '(?<=kubeadm join )[^\s]*' | head -n 1)
     token=$(cat $ROOT_DIR/init.log | grep -oP '(?<=--token )[^\s]*' | head -n 1)
@@ -148,6 +159,7 @@ function clean_kubeadm {
             sudo rm -rf /var/lib/cni
             sudo find /etc/cni/net.d -name "*flannel*" | xargs sudo rm -rf
             sudo systemctl restart docker.service docker.socket
+            sudo setfacl -m "user:$USER:rw" /var/run/docker.sock
             rm -rf ~/.kube
 EOF
     } &

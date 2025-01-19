@@ -6,6 +6,8 @@ cd $BASE_DIR
 set -x
 
 USAGE="run.sh k8s|kd #deployments [#pods]"
+# NOTE: if using kwok, then caller should setup custom kubelet service with --simulate flag + kwok node delegation
+# NOTE: must also export LIFECYCLE=custom env var
 
 export WORKLOAD=${WORKLOAD:-"test-autoscaler"}
 # export IMAGE=${IMAGE:-"gcr.io/google-samples/kubernetes-bootcamp:v1"}
@@ -44,8 +46,8 @@ for ((i = 0; i < n_deployments; i++)); do
     cat config/deployment.template.yaml | envsubst | kubectl apply -f -
 done
 
-read -p "Press enter to continue..."
-# sleep 60
+# read -p "Press enter to continue..."
+sleep 30
 
 go run . -baseline $baseline -selector $WORKLOAD -n $n_pods >result.log 2>stderr.log
 

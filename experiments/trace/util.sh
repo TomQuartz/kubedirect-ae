@@ -16,7 +16,13 @@ function setup_dirs {
 
 # usage: kubeadm_up [large] [debug] [#workers]
 function kubeadm_up {
-    $ROOT_DIR/scripts/kubeadm.sh run $@
+    # loop until kubeadm is up
+    while true; do
+        $ROOT_DIR/scripts/kubeadm.sh run $@ && break
+        sleep 30
+        $ROOT_DIR/scripts/kubeadm.sh clean
+        sleep 30
+    done
     sleep 30
 }
 

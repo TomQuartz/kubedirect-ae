@@ -81,8 +81,8 @@ done
 export NAME="workload-daemonset"
 cat $workload_daemonset | envsubst | kubectl apply -f -
 
-read -p "Press enter to continue..."
-# sleep 60
+# read -p "Press enter to continue..."
+sleep 60
 
 echo "Starting trace client with args: $@ $arg_gateway $arg_backend $arg_autoscaler $arg_autoscaler_config $arg_loader $arg_output"
 

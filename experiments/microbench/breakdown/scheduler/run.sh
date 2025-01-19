@@ -38,8 +38,8 @@ echo "Running scheduler breakdown experiment: baseline=$baseline, target=$WORKLO
 export NAME=$WORKLOAD
 cat config/template-pod.yaml | envsubst | kubectl apply -f -
 
-read -p "Press enter to continue..."
-# sleep 60
+# read -p "Press enter to continue..."
+sleep 30
 
 go run . -baseline $baseline -target $WORKLOAD -n $n_pods >result.log 2>stderr.log
 

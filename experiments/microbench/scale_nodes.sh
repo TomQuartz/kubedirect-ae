@@ -46,12 +46,14 @@ run_cmd_with_nodes $n_nodes e2e "$cmd" kd+
 ###################### breakdown: replicaset ######################
 cd $BASE_DIR/breakdown/replicaset
 cmd="./run.sh \$baseline 1 \$((n_nodes * n_pods_per_node))"
-run_cmd_with_nodes $n_nodes _rs "$cmd" kd
+# NOTE: must pass LIFECYCLE=custom because we are using kwok nodes
+LIFECYCLE=custom run_cmd_with_nodes $n_nodes _rs "$cmd" kd
 
 ###################### breakdown: scheduler ######################
 cd $BASE_DIR/breakdown/scheduler
 cmd="./run.sh \$baseline \$((n_nodes * n_pods_per_node))"
-run_cmd_with_nodes $n_nodes _sched "$cmd" kd
+# NOTE: must pass LIFECYCLE=custom because we are using kwok nodes
+LIFECYCLE=custom run_cmd_with_nodes $n_nodes _sched "$cmd" kd
 
 ###################### breakdown: kubelet ######################
 cd $BASE_DIR/breakdown/kubelet
