@@ -46,11 +46,17 @@ function run_kubeadm {
     sudo cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
     sudo chown $(id -u):$(id -g) $HOME/.kube/config
 
-    sleep 30
-    kubectl apply -f $MANIFESTS_DIR/kubeadm/$CNI_CONFIG
-
-    # check cni
+    # check for crashloop
     sleep 10
+    crashed=$(kubectl get pods -n kube-system --no-headers | grep -i CrashLoopBackOff) || true
+    if [ -n "$crashed" ]; then
+        echo "kubeadm init failed: $crashed"
+        exit 1
+    fi
+
+    # apply and check cni
+    kubectl apply -f $MANIFESTS_DIR/kubeadm/$CNI_CONFIG
+    sleep 30
     cni0=$(ifconfig cni0 | grep 'inet ' | awk '{print $2}') || true
     flannel1=$(ifconfig flannel.1 | grep 'inet ' | awk '{print $2}') || true
     cni0_prefix=$(echo $cni0 | cut -d '.' -f 1-2)
