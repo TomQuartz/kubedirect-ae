@@ -56,7 +56,7 @@ function setup_k8s {
 function setup_install {
     install_go
     install_kind
-    install_kwok
+    # install_kwok
     echo "Installing k8s across cluster..."
     for host in $(hosts); do
         ssh $host -- "~/.kubedirect/scripts/setup.sh k8s" &
@@ -89,7 +89,7 @@ function setup_reboot {
         sudo modprobe br_netfilter
         sudo sysctl --system
         sudo usermod -aG docker $USER
-        sudo systemctl start docker
+        sudo systemctl restart docker
         sudo setfacl -m "user:$USER:rw" /var/run/docker.sock
 EOF
     } &

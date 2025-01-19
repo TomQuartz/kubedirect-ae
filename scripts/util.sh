@@ -8,7 +8,13 @@ MY_REPO="shengqipku"
 K8S_BUILD_TAG="v1.31.0-kubedirect"
 
 function hosts {
-    grep -v "localhost" /etc/hosts | awk '{print $NF}'
+    for n in $(grep -v "localhost" /etc/hosts | awk '{print $NF}'); do
+        if [ ! -e "$HOME/.ssh/exclude" ]; then
+            echo $n
+        elif ! grep -Fxq $n $HOME/.ssh/exclude; then
+            echo $n
+        fi
+    done
 }
 
 function workers {

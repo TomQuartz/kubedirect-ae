@@ -8,7 +8,7 @@ set -x
 
 # kubernetes 1.31.0-1.1 + docker 27.3.1 on ubuntu 22.04
 function install_k8s {
-    sudo apt update
+    sudo apt-get update
 
     sudo ufw disable
     sudo apt-get install -y selinux-utils jq
@@ -61,7 +61,7 @@ EOF
     $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
     sudo tee /etc/apt/sources.list.d/docker.list >/dev/null
 
-    sudo apt update
+    sudo apt-get update
     sudo apt-get -y install docker-ce=5:27.3.1-1~ubuntu.22.04~jammy docker-ce-cli=5:27.3.1-1~ubuntu.22.04~jammy containerd.io
 
     # configure docker
@@ -122,7 +122,7 @@ EOF
     echo 'deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.31/deb/ /' | sudo tee /etc/apt/sources.list.d/kubernetes.list
     sudo chmod 644 /etc/apt/sources.list.d/kubernetes.list >/dev/null
 
-    sudo apt update
+    sudo apt-get update
     sudo apt-get install -y kubelet=1.31.0-1.1 kubeadm=1.31.0-1.1 kubectl=1.31.0-1.1
     sudo apt-mark hold kubelet kubeadm kubectl
     echo 'source <(kubectl completion bash)' >>~/.bashrc
@@ -130,13 +130,13 @@ EOF
 
     sudo crictl config --set runtime-endpoint=unix:///run/containerd/containerd.sock
 
-    sudo apt install -y python3-pip
+    sudo apt-get install -y python3-pip
     python3 -m pip install --upgrade pip
     pip3 install numpy scipy
     pip3 install --upgrade pyyaml
     pip3 install parse numpy matplotlib
 
-    sudo apt install -y git-lfs
+    sudo apt-get install -y git-lfs
     git lfs install
 
     sudo sysctl --system
@@ -157,6 +157,7 @@ function install_kind {
 }
 
 function install_kwok {
+    source ~/.bashrc
     # KWOK repository
     KWOK_REPO=kubernetes-sigs/kwok
     # Get latest

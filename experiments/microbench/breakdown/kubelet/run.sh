@@ -34,7 +34,19 @@ fi
 shift
 
 # choose an arbitrary worker node
-node=$(grep -v "localhost" /etc/hosts | awk '{print $NF}' | grep -vw $(hostname) | head -n 1)
+for n in $(grep -v "localhost" /etc/hosts | awk '{print $NF}' | grep -vw $(hostname)); do
+    if [ ! -e "$HOME/.ssh/exclude" ]; then
+        node=$n
+        break
+    elif ! grep -Fxq $n $HOME/.ssh/exclude; then
+        node=$n
+        break
+    fi
+done
+if [ -z "$node" ]; then
+    echo "No available worker node found"
+    exit 1
+fi
 
 echo "Running kubelet breakdown experiment: baseline=$baseline, target=$WORKLOAD, node=$node, #pods=$n_pods"
 
