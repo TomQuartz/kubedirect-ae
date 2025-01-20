@@ -172,7 +172,7 @@ func run(ctx context.Context, mgr manager.Manager, nodeName string, target strin
 	for i := range reqs {
 		go func(i int) {
 			if _, err := kdClient.Client().BindPod(ctx, reqs[i]); err != nil {
-				klog.Error(err, "Error binding pod", "pod", podInfos[i])
+				klog.ErrorS(err, "Error binding pod", "pod", podInfos[i])
 				atomic.AddInt32(&errs, 1)
 				// os.Exit(1)
 			}

@@ -207,14 +207,14 @@ func run(ctx context.Context, mgr manager.Manager, selector string, nPods int, f
 	}
 
 	klog.Infof("Scaling up %d targets, %d pods each", len(targets), nPodsPerTarget)
-	desiredScale := &autoscalingv1.Scale{Spec: autoscalingv1.ScaleSpec{Replicas: int32(nPodsPerTarget)}}
 	start := time.Now()
 	errs := int32(0)
 	for i := range targets {
 		target := targets[i]
 		go func() {
+			desiredScale := &autoscalingv1.Scale{Spec: autoscalingv1.ScaleSpec{Replicas: int32(nPodsPerTarget)}}
 			if err := mgrClient.SubResource("scale").Update(ctx, target, client.WithSubResourceBody(desiredScale)); err != nil {
-				klog.Error(err, "Error scaling up", "target", klog.KObj(target))
+				klog.ErrorS(err, "Error scaling up", "target", klog.KObj(target))
 				atomic.AddInt32(&errs, 1)
 				// os.Exit(1)
 			}

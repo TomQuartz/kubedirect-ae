@@ -137,7 +137,7 @@ func runKd(ctx context.Context, mgr manager.Manager, selector string, nPods int)
 			defer wg.Done()
 			req := kdrpc.NewPodSchedulingRequest(kdClient, target, nPodsPerTarget)
 			if _, err := kdClient.Client().SchedulePods(ctx, req); err != nil {
-				klog.Error(err, "Error scaling up", "target", klog.KObj(target))
+				klog.ErrorS(err, "Error scaling up", "target", klog.KObj(target))
 				atomic.AddInt32(&errs, 1)
 				// os.Exit(1)
 			}

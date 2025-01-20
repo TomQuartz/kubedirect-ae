@@ -138,7 +138,7 @@ func run(ctx context.Context, mgr manager.Manager, target string, nPods int, fal
 	klog.Infof("Scheduling %d pods", nPods)
 	start := time.Now()
 	if _, err := kdClient.Client().SchedulePods(ctx, req); err != nil {
-		klog.Error(err, "Error scheduling pods", "target", klog.KObj(fakeReplicaSet))
+		klog.ErrorS(err, "Error scheduling pods", "target", klog.KObj(fakeReplicaSet))
 		os.Exit(1)
 	}
 	klog.Info("Done")
