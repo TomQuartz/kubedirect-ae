@@ -14,6 +14,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/strategicpatch"
 	"k8s.io/apimachinery/pkg/util/wait"
+	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
 
 	"google.golang.org/grpc"
@@ -22,6 +23,7 @@ import (
 	emptypb "google.golang.org/protobuf/types/known/emptypb"
 
 	// Kubedirect
+	benchutil "github.com/tomquartz/kubedirect-bench/pkg/util"
 	kdctx "k8s.io/kubedirect/pkg/context"
 	kdrpc "k8s.io/kubedirect/pkg/rpc"
 	kdproto "k8s.io/kubedirect/pkg/rpc/proto"
@@ -33,10 +35,22 @@ func (s *KubedirectServer) Register(sr grpc.ServiceRegistrar) {
 	kdproto.RegisterKubeletServer(sr, s)
 }
 
+func (s *KubedirectServer) GetClient(nodeName string) clientset.Interface {
+	c, _ := s.clientPool.Get(nodeName)
+	return c
+}
+
+func (s *KubedirectServer) DelClient(nodeName string) {
+	s.clientPool.Del(nodeName)
+}
+
 // impl kdproto.KubeletServer
 func (s *KubedirectServer) Handshake(ctx context.Context, req *kdproto.HandshakeRequest) (*kdproto.NodeInfo, error) {
 	kdLogger := kdutil.NewLogger(klog.FromContext(ctx)).WithHeader(req.Source + "->Handshake")
 	kdLogger.Info(fmt.Sprintf("New epoch from %s to %s: %s", req.Source, req.Destination, req.Epoch))
+	s.clientPool.GetOrCreate(req.Destination, func() clientset.Interface {
+		return benchutil.NewClientsetOrDie()
+	})
 	holder := s.serverHub.Lock(req.Source, req.Epoch)
 	defer holder.Unlock()
 	msg := &kdproto.NodeInfo{
@@ -93,7 +107,7 @@ func (s *KubedirectServer) ExposeManagedPod(ctx context.Context, pod *corev1.Pod
 	}
 	start := time.Now()
 	tryCreate := func(ctx context.Context) (bool, error) {
-		_, err := s.client.CoreV1().Pods(pod.Namespace).Create(ctx, pod, metav1.CreateOptions{})
+		_, err := s.GetClient(pod.Spec.NodeName).CoreV1().Pods(pod.Namespace).Create(ctx, pod, metav1.CreateOptions{})
 		if err == nil {
 			kdLogger.Info("Pod exposed", "elapsed", time.Since(start))
 			return true, nil
@@ -233,7 +247,7 @@ func (s *KubedirectServer) markPodReadyByUpdate(ctx context.Context, pod *corev1
 	kdLogger := kdutil.NewLogger(logger).WithHeader("Update").WithValues("pod", klog.KObj(pod))
 	pod.Status = *refStatus.DeepCopy()
 	start := time.Now()
-	updatedPod, err := s.client.CoreV1().Pods(pod.Namespace).UpdateStatus(ctx, pod, metav1.UpdateOptions{})
+	updatedPod, err := s.GetClient(pod.Spec.NodeName).CoreV1().Pods(pod.Namespace).UpdateStatus(ctx, pod, metav1.UpdateOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to update status: %v", err)
 	}
@@ -253,7 +267,7 @@ func (s *KubedirectServer) markPodReadyByPatch(ctx context.Context, pod *corev1.
 		return pod, nil
 	}
 	start := time.Now()
-	updatedPod, err := s.client.CoreV1().Pods(pod.Namespace).Patch(ctx, pod.Name, types.StrategicMergePatchType, patchBytes, metav1.PatchOptions{}, "status")
+	updatedPod, err := s.GetClient(pod.Spec.NodeName).CoreV1().Pods(pod.Namespace).Patch(ctx, pod.Name, types.StrategicMergePatchType, patchBytes, metav1.PatchOptions{}, "status")
 	if err != nil {
 		return nil, fmt.Errorf("failed to patch status %q: %v", patchBytes, err)
 	}

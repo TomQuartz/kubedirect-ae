@@ -28,7 +28,7 @@ function run_cmd_with_nodes {
         eval "$cmd"
         cp ./result.log $RESULTS/$name.$baseline.$n_nodes.log
         cp ./stderr.log $RESULTS/stderr/$name.$baseline.$n_nodes.log
-        sleep 30
+        sleep 120
     done
 }
 
@@ -43,11 +43,11 @@ cmd="./run.sh \$baseline 1 \$((n_nodes * n_pods_per_node))"
 # use custom kubelet for kd+
 run_cmd_with_nodes $n_nodes e2e "$cmd" kd+
 
-###################### breakdown: replicaset ######################
-cd $BASE_DIR/breakdown/replicaset
-cmd="./run.sh \$baseline 1 \$((n_nodes * n_pods_per_node))"
-# NOTE: must pass LIFECYCLE=custom because we are using kwok nodes
-LIFECYCLE=custom run_cmd_with_nodes $n_nodes _rs "$cmd" kd
+# ###################### breakdown: replicaset ######################
+# cd $BASE_DIR/breakdown/replicaset
+# cmd="./run.sh \$baseline 1 \$((n_nodes * n_pods_per_node))"
+# # NOTE: must pass LIFECYCLE=custom because we are using kwok nodes
+# LIFECYCLE=custom run_cmd_with_nodes $n_nodes _rs "$cmd" kd
 
 ###################### breakdown: scheduler ######################
 cd $BASE_DIR/breakdown/scheduler

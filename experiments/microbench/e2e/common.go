@@ -8,8 +8,8 @@ import (
 	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
-	corev1 "k8s.io/api/core/v1"
 	autoscalingv1 "k8s.io/api/autoscaling/v1"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
@@ -116,7 +116,7 @@ func (m *PodMonitor) HandlePodEvent(kdLogger *kdutil.Logger, old, new *corev1.Po
 		key := workload.KeyFromObject(new)
 		if exp, ok := m.expectations.Get(key); ok {
 			if exp.Done(new) {
-				kdLogger.Info("Pod ready", "pod", klog.KObj(old))
+				kdLogger.Info("Pod ready", "pod", klog.KObj(new))
 			}
 		}
 	}

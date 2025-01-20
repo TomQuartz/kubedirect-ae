@@ -60,8 +60,9 @@ type KubedirectServer struct {
 	serverHub *kdrpc.ServerHub
 	kdproto.UnimplementedKubeletServer
 	// k8s client and informer
-	client  clientset.Interface
-	factory informers.SharedInformerFactory
+	initClient clientset.Interface
+	clientPool *kdutil.SharedMap[clientset.Interface]
+	factory    informers.SharedInformerFactory
 	// for listing template/managed pods in rpc handlers
 	nodeLister corelisters.NodeLister
 	podLister  corelisters.PodLister
@@ -94,7 +95,8 @@ func NewKubedirectServer(c clientset.Interface, nodeName string) *KubedirectServ
 	factory := informers.NewSharedInformerFactory(c, 0)
 	kdServer := &KubedirectServer{
 		kdLogger:   kdLogger,
-		client:     c,
+		initClient: c,
+		clientPool: kdutil.NewSharedMap[clientset.Interface](),
 		factory:    factory,
 		nodeLister: factory.Core().V1().Nodes().Lister(),
 		podLister:  factory.Core().V1().Pods().Lister(),
@@ -144,6 +146,19 @@ func NewKubedirectServer(c clientset.Interface, nodeName string) *KubedirectServ
 		return nil
 	}
 
+	if _, err := factory.Core().V1().Nodes().Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		DeleteFunc: func(node interface{}) {
+			kdLogger := kdLogger.WithHeader("NodeEvent")
+			if node := kdServer.unwrapNodeObj(kdLogger, node); node != nil {
+				kdServer.DelClient(node.Name)
+			}
+		},
+	},
+	); err != nil {
+		kdLogger.Error(err, "Failed to add pod event handlers")
+		return nil
+	}
+
 	// NOTE: unlike scheduler, we don't need to explicitly handle template pod deletion events
 	// the exposed pods will be deleted by system-wide GC and notified through the above handler
 
@@ -184,25 +199,9 @@ func (s *KubedirectServer) isResponsibleFor(pod *corev1.Pod) (bool, error) {
 	return thisNode.Annotations[kdrpc.KubeletServiceAddrAnnotation] == thatNode.Annotations[kdrpc.KubeletServiceAddrAnnotation], nil
 }
 
-func (s *KubedirectServer) unwrapPodObject(kdLogger *kdutil.Logger, obj interface{}) *corev1.Pod {
-	if obj == nil {
-		return nil
-	}
-	pod, ok := obj.(*corev1.Pod)
-	if !ok {
-		kdLogger.Error(nil, "Cannot convert to *corev1.Pod", "obj", obj)
-		return nil
-	}
-	if !s.enqueueFilter(pod) {
-		kdLogger.WARN("Not interested in pod", "pod", klog.KObj(pod))
-		return nil
-	}
-	return pod
-}
-
 func (s *KubedirectServer) handlePodEvent(obj interface{}, isDelete bool) {
 	kdLogger := s.kdLogger.WithHeader("PodEvent")
-	pod := s.unwrapPodObject(kdLogger, obj)
+	pod := s.unwrapPodObj(kdLogger, obj)
 	if pod == nil {
 		return
 	}
@@ -266,20 +265,13 @@ func (s *KubedirectServer) SyncPod(ctx context.Context, pending PendingPod) erro
 		return nil
 	}
 
-	// expose in-mem pod
-	// NOTE: ExposeManagedPod may be called multiple times for the same pod
-	// but creation can only succeed once
-	if isInMem {
-		go s.ExposeManagedPod(ctx, pod)
-	}
-
 	// check api pod status
 	// NOTE: deletion timestamp can only be set on api pods; in-mem pods only occur during creation
 	// NOTE: we can immediately remove the api object once deletion is requested
 	// because the custom kubelet simply binds a pod to an existing reference pod from workload pool
 	if pod.DeletionTimestamp != nil {
 		kdLogger.V(1).Info("Deleting pod")
-		if err := s.client.CoreV1().Pods(pod.Namespace).Delete(ctx, pod.Name, metav1.DeleteOptions{
+		if err := s.initClient.CoreV1().Pods(pod.Namespace).Delete(ctx, pod.Name, metav1.DeleteOptions{
 			GracePeriodSeconds: new(int64), // Set gracePeriodSeconds to 0 to force delete
 		}); err != nil && !apierrors.IsNotFound(err) {
 			kdLogger.Error(err, "Failed to delete pod")
@@ -302,9 +294,13 @@ func (s *KubedirectServer) SyncPod(ctx context.Context, pending PendingPod) erro
 	}
 
 	// check ready delay
-	readyTime, _ := s.readyTimers.GetOrCreate(pending.String(), func() time.Time {
+	readyTime, fresh := s.readyTimers.GetOrCreate(pending.String(), func() time.Time {
 		return time.Now().Add(s.readyDelay)
 	})
+	// expose in-mem pod if fresh
+	if fresh && isInMem {
+		go s.ExposeManagedPod(ctx, pod)
+	}
 	if waitTime := time.Until(readyTime); waitTime > 0 {
 		kdLogger.V(1).DEBUG(fmt.Sprintf("Wait %.2fms til ready", waitTime.Seconds()*1e3))
 		s.queue.AddAfter(pending, waitTime)
@@ -398,7 +394,7 @@ func (s *KubedirectServer) ListenAndServe(ctx context.Context) error {
 			node.Annotations = make(map[string]string)
 		}
 		node.Annotations[kdrpc.KubeletServiceAddrAnnotation] = hostIP + CustomKubeletServicePort
-		if _, err := s.client.CoreV1().Nodes().Update(ctx, node, metav1.UpdateOptions{}); err != nil {
+		if _, err := s.initClient.CoreV1().Nodes().Update(ctx, node, metav1.UpdateOptions{}); err != nil {
 			kdLogger.Error(err, fmt.Sprintf("Failed to update node %v", s.nodeName))
 			return false, nil
 		}
@@ -414,4 +410,46 @@ func (s *KubedirectServer) ListenAndServe(ctx context.Context) error {
 	}
 
 	return s.serverHub.ListenAndServe(ctx, CustomKubeletServicePort)
+}
+
+func (s *KubedirectServer) unwrapPodObj(kdLogger *kdutil.Logger, obj interface{}) *corev1.Pod {
+	var pod *corev1.Pod
+	switch t := obj.(type) {
+	case *corev1.Pod:
+		pod = obj.(*corev1.Pod)
+	case cache.DeletedFinalStateUnknown:
+		var ok bool
+		pod, ok = t.Obj.(*corev1.Pod)
+		if !ok {
+			kdLogger.Error(nil, fmt.Sprintf("Cannot convert %T to *v1.Pod", obj))
+			return nil
+		}
+	default:
+		kdLogger.Error(nil, fmt.Sprintf("Cannot convert %T to *v1.Pod", obj))
+		return nil
+	}
+	if !s.enqueueFilter(pod) {
+		kdLogger.WARN("Pod does not pass enqueue filter", "pod", klog.KObj(pod))
+		return nil
+	}
+	return pod
+}
+
+func (s *KubedirectServer) unwrapNodeObj(kdLogger *kdutil.Logger, obj interface{}) *corev1.Node {
+	var node *corev1.Node
+	switch t := obj.(type) {
+	case *corev1.Node:
+		node = obj.(*corev1.Node)
+	case cache.DeletedFinalStateUnknown:
+		var ok bool
+		node, ok = t.Obj.(*corev1.Node)
+		if !ok {
+			kdLogger.Error(nil, fmt.Sprintf("Cannot convert %T to *v1.Node", obj))
+			return nil
+		}
+	default:
+		kdLogger.Error(nil, fmt.Sprintf("Cannot convert %T to *v1.Node", obj))
+		return nil
+	}
+	return node
 }
