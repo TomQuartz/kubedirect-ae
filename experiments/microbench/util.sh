@@ -21,7 +21,7 @@ function kubeadm_up {
         $ROOT_DIR/scripts/kubeadm.sh run $@ && break
         sleep 10
         $ROOT_DIR/scripts/kubeadm.sh clean
-        sleep 60
+        sleep 10
     done
     sleep 30
 }

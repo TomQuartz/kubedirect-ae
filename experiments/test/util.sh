@@ -1,14 +1,14 @@
 BASE_DIR=$PWD
 ROOT_DIR=$BASE_DIR/../..
 
-# usage: kubeadm_up [large] [debug] [#workers]
+# usage: kubeadm_up [large] [#workers]
 function kubeadm_up {
     # loop until kubeadm is up
     while true; do
-        $ROOT_DIR/scripts/kubeadm.sh test && break
+        $ROOT_DIR/scripts/kubeadm.sh test $1 && break
         sleep 10
         $ROOT_DIR/scripts/kubeadm.sh clean
-        sleep 60
+        sleep 10
     done
     sleep 30
 }

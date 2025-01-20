@@ -62,15 +62,6 @@ function run_kubeadm {
     # apply and check cni
     kubectl apply -f $MANIFESTS_DIR/kubeadm/$CNI_CONFIG
     sleep 30
-    cni0=$(ifconfig cni0 | grep 'inet ' | awk '{print $2}') || true
-    flannel1=$(ifconfig flannel.1 | grep 'inet ' | awk '{print $2}') || true
-    cni0_prefix=$(echo $cni0 | cut -d '.' -f 1-2)
-    flannel1_prefix=$(echo $flannel1 | cut -d '.' -f 1-2)
-    if [ "$cni0_prefix" != "$flannel1_prefix" ]; then
-        echo "cni0 ($cni0) and flannel1 ($flannel1) are not in the same subnet"
-        exit 1
-    fi
-
     api_endpoint=$(cat $ROOT_DIR/init.log | grep -oP '(?<=kubeadm join )[^\s]*' | head -n 1)
     token=$(cat $ROOT_DIR/init.log | grep -oP '(?<=--token )[^\s]*' | head -n 1)
     token_hash=$(cat $ROOT_DIR/init.log | grep -oP '(?<=--discovery-token-ca-cert-hash )[^\s]*' | head -n 1)
@@ -154,22 +145,25 @@ function clean_kubeadm {
     {
         ssh -q $host -- <<EOF
             sudo kubeadm reset -f
+            sleep 30
             sudo journalctl --rotate --vacuum-time=1s
             sudo rm -rf /var/lib/kubelet/*
             sudo rm -rf /var/lib/etcd/*
-            sudo iptables -F
-            sudo iptables -t nat -F
-            sudo iptables -t mangle -F
-            sudo iptables -X
+            sudo rm -rf /run/flannel/*
+            # NOTE: the following two dirs cannot be cleaned by rm -rf /*
+            sudo rm -rf /var/lib/cni
+            sudo rm -rf /etc/cni
             sudo ifconfig flannel.1 down
             sudo ip link delete flannel.1
             sudo ifconfig cni0 down
             sudo brctl delbr cni0
             sudo ip link delete cni0
-            # NOTE: simply sudo rm -rf /* won't work
-            sudo rm -rf /var/lib/cni
-            sudo find /etc/cni/net.d -name "*flannel*" | xargs sudo rm -rf
-            sudo systemctl restart docker.service docker.socket
+            sudo iptables -F
+            sudo iptables -t nat -F
+            sudo iptables -t mangle -F
+            sudo iptables -X
+            sleep 30
+            sudo systemctl restart docker.service docker.socket containerd.service
             sudo setfacl -m "user:$USER:rw" /var/run/docker.sock
             rm -rf ~/.kube
 EOF
