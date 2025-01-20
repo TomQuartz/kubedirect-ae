@@ -31,15 +31,19 @@ type Expectation struct {
 	desired sets.Set[string]
 }
 
-func NewExpectation(wg *sync.WaitGroup, podInfos []*kdctx.PodInfo) *Expectation {
-	desired := sets.New[string]()
+func NewExpectation() *Expectation {
+	return &Expectation{
+		desired: sets.New[string](),
+	}
+}
+
+func (s *Expectation) Watch(wg *sync.WaitGroup, podInfos []*kdctx.PodInfo) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.wg = wg
 	for _, podInfo := range podInfos {
 		key := fmt.Sprintf("%s/%s", podInfo.Namespace, podInfo.Name)
-		desired.Insert(key)
-	}
-	return &Expectation{
-		wg:      wg,
-		desired: desired,
+		s.desired.Insert(key)
 	}
 }
 
@@ -47,6 +51,9 @@ func (s *Expectation) Done(pod *corev1.Pod) bool {
 	key := fmt.Sprintf("%s/%s", pod.Namespace, pod.Name)
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.wg == nil {
+		return false
+	}
 	if s.desired.Has(key) {
 		s.desired.Delete(key)
 		s.wg.Done()
@@ -62,12 +69,13 @@ type PodMonitor struct {
 
 func NewPodMonitor(ownerName string) *PodMonitor {
 	return &PodMonitor{
-		ownerName: ownerName,
+		ownerName:   ownerName,
+		expectation: NewExpectation(),
 	}
 }
 
 func (m *PodMonitor) Watch(wg *sync.WaitGroup, podInfos []*kdctx.PodInfo) {
-	m.expectation = NewExpectation(wg, podInfos)
+	m.expectation.Watch(wg, podInfos)
 }
 
 func (m *PodMonitor) SetupWithManager(ctx context.Context, mgr ctrl.Manager) error {

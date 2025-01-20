@@ -47,7 +47,7 @@ custom_kubelet_down
 ###################### breakdown: autoscaler ######################
 cd $BASE_DIR/breakdown/autoscaler
 cmd="./run.sh \$baseline \$n_funcs \$((n_funcs * n_pods_per_func))"
-run_cmd _rs "$cmd" k8s kd
+run_cmd _as "$cmd" k8s kd
 
 ###################### breakdown: replicaset ######################
 cd $BASE_DIR/breakdown/replicaset

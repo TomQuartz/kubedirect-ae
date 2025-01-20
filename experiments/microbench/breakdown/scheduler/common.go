@@ -120,7 +120,7 @@ func run(ctx context.Context, mgr manager.Manager, target string, nPods int, fal
 	if owner := templatePod.Labels[kdutil.OwnerNameLabel]; owner != target {
 		klog.Fatalf("Invalid owner label, expected %s, got %s", target, owner)
 	}
-	if fallback && !kdutil.IsFallbackBinding(templatePod) {
+	if fallback != kdutil.IsFallbackBinding(templatePod) {
 		klog.Fatalf("Invalid template pod: missing fallback binding label")
 	}
 

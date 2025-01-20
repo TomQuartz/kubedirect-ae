@@ -3,12 +3,12 @@ package main
 import (
 	"context"
 	"fmt"
-	"os"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
+	autoscalingv1 "k8s.io/api/autoscaling/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/client-go/util/workqueue"
@@ -207,19 +207,22 @@ func run(ctx context.Context, mgr manager.Manager, selector string, nPods int, f
 	}
 
 	klog.Infof("Scaling up %d targets, %d pods each", len(targets), nPodsPerTarget)
+	desiredScale := &autoscalingv1.Scale{Spec: autoscalingv1.ScaleSpec{Replicas: int32(nPodsPerTarget)}}
 	start := time.Now()
+	errs := int32(0)
 	for i := range targets {
 		target := targets[i]
-		*target.Spec.Replicas = int32(nPodsPerTarget)
 		go func() {
-			if err := mgrClient.Update(ctx, target); err != nil {
+			if err := mgrClient.SubResource("scale").Update(ctx, target, client.WithSubResourceBody(desiredScale)); err != nil {
 				klog.Error(err, "Error scaling up", "target", klog.KObj(target))
-				os.Exit(1)
+				atomic.AddInt32(&errs, 1)
+				// os.Exit(1)
 			}
 		}()
 	}
 	wg.Wait()
 	klog.Info("Done")
 
-	fmt.Printf("total: %v us\n", time.Since(start).Microseconds())
+	nErrs := int(atomic.LoadInt32(&errs))
+	fmt.Printf("total: %v us (%d/%d)\n", time.Since(start).Microseconds(), len(targets)-nErrs, len(targets))
 }

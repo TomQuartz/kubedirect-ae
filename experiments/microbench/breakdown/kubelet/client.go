@@ -3,8 +3,8 @@ package main
 import (
 	"context"
 	"fmt"
-	"os"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -16,7 +16,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 
 	// Kubedirect
-	benchutil "github.com/tomquartz/kubedirect-bench/pkg/util"
+
 	kdctx "k8s.io/kubedirect/pkg/context"
 	kdrpc "k8s.io/kubedirect/pkg/rpc"
 	kdproto "k8s.io/kubedirect/pkg/rpc/proto"
@@ -52,13 +52,13 @@ func doKubeletHandshake(ctx context.Context, src string, dest string, client kdp
 	return epoch, nil
 }
 
-func newKubeletLister(_ context.Context, uncachedClient client.Client, nodeName string, requireAddrAnnotation bool) func(ctx context.Context) (addrs []string, err error) {
+func newKubeletLister(_ context.Context, c client.Client, nodeName string, requireAddrAnnotation bool) func(ctx context.Context) (addrs []string, err error) {
 	// logger := klog.FromContext(ctx)
 	// kdLogger := kdutil.NewLogger(logger).WithHeader(fmt.Sprintf("Lister/%s", nodeName))
 
 	return func(ctx context.Context) ([]string, error) {
 		node := &corev1.Node{}
-		if err := uncachedClient.Get(ctx, client.ObjectKey{Name: nodeName}, node); err != nil {
+		if err := c.Get(ctx, client.ObjectKey{Name: nodeName}, node); err != nil {
 			return nil, err
 		}
 		if overrideAddr, mustOverride := kdrpc.GetKubeletServiceOverrideAddr(node); overrideAddr != "" {
@@ -105,10 +105,26 @@ func newBindingRequests(kdClient kdrpc.ClientInterface[kdproto.KubeletClient], p
 }
 
 func run(ctx context.Context, mgr manager.Manager, nodeName string, target string, nPods int, useDefaultKubelet bool) {
-	uncachedClient := benchutil.NewUncachedClientOrDie(mgr)
+	// setup pod monitor
+	monitor := NewPodMonitor(target)
+	if err := monitor.SetupWithManager(ctx, mgr); err != nil {
+		klog.Fatalf("Error creating monitor: %v", err)
+	}
+
+	klog.Info("Starting manager")
+	go func() {
+		if err := mgr.Start(ctx); err != nil {
+			klog.Fatalf("Error running manager: %v", err)
+		}
+	}()
+
+	if !mgr.GetCache().WaitForCacheSync(ctx) {
+		klog.Fatalf("Cannot syncing manager cache")
+	}
+	mgrClient := mgr.GetClient()
 
 	klog.Info("Starting KD client")
-	kubeletLister := newKubeletLister(ctx, uncachedClient, nodeName, !useDefaultKubelet)
+	kubeletLister := newKubeletLister(ctx, mgrClient, nodeName, !useDefaultKubelet)
 	kdClientHub := kdrpc.NewEventedClientHub(kdClientKeyFunc(nodeName), nodeName, kdproto.NewKubeletClient).
 		WithHandshake(doKubeletHandshake).
 		WithDialOptions(dialTimeout, dialInterval).
@@ -129,7 +145,7 @@ func run(ctx context.Context, mgr manager.Manager, nodeName string, target strin
 		Namespace: metav1.NamespaceDefault,
 		Name:      target + "-template",
 	}
-	if err := uncachedClient.Get(ctx, templatePodKey, templatePod); err != nil {
+	if err := mgrClient.Get(ctx, templatePodKey, templatePod); err != nil {
 		klog.Fatalf("Error getting template pod: %v", err)
 	}
 
@@ -146,39 +162,25 @@ func run(ctx context.Context, mgr manager.Manager, nodeName string, target strin
 	podInfos := newPodInfos(templatePod.Namespace, target, nodeName, nPods)
 	reqs := newBindingRequests(kdClient, podInfos)
 
-	// setup pod monitor
-	monitor := NewPodMonitor(target)
-	if err := monitor.SetupWithManager(ctx, mgr); err != nil {
-		klog.Fatalf("Error creating monitor: %v", err)
-	}
-
 	wg := &sync.WaitGroup{}
 	wg.Add(len(reqs))
 	monitor.Watch(wg, podInfos)
 
-	klog.Info("Starting manager")
-	go func() {
-		if err := mgr.Start(ctx); err != nil {
-			klog.Fatalf("Error running manager: %v", err)
-		}
-	}()
-
-	if !mgr.GetCache().WaitForCacheSync(ctx) {
-		klog.Fatalf("Cannot syncing manager cache")
-	}
-
 	klog.Infof("Instantiating %d pods on %s", nPods, nodeName)
 	start := time.Now()
+	errs := int32(0)
 	for i := range reqs {
 		go func(i int) {
 			if _, err := kdClient.Client().BindPod(ctx, reqs[i]); err != nil {
 				klog.Error(err, "Error binding pod", "pod", podInfos[i])
-				os.Exit(1)
+				atomic.AddInt32(&errs, 1)
+				// os.Exit(1)
 			}
 		}(i)
 	}
 	wg.Wait()
 	klog.Info("Done")
 
-	fmt.Printf("total: %v us\n", time.Since(start).Microseconds())
+	nErrs := int(atomic.LoadInt32(&errs))
+	fmt.Printf("total: %v us (%d/%d)\n", time.Since(start).Microseconds(), len(reqs)-nErrs, len(reqs))
 }

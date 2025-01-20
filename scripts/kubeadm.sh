@@ -26,6 +26,11 @@ function run_kubeadm {
     sudo rm -rf $LOG_DIR/kubeadm/*
     rm -rf $MANIFESTS_DIR/kubeadm/_tmp_*
 
+    if [ -n "$large" ]; then
+        sudo mkdir -p /etc/kubernetes/manifests
+        sudo cp $MANIFESTS_DIR/kubeadm/kube-scheduler-config.large.yaml /etc/kubernetes/manifests/
+    fi
+
     # ensure ports
     critical_ports=("6443" "2379" "2380" "10250" "10251" "10252" "10256" "10257" "4443")
     for port in ${critical_ports[@]} ; do

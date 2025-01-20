@@ -45,6 +45,14 @@ scheduler:
   extraArgs:
   - name: v
     value: "2"
+  - name: config
+    value: /etc/kubernetes/manifests/kube-scheduler-config.large.yaml
+  extraVolumes:
+  - name: kube-scheduler-config
+    hostPath: /etc/kubernetes/manifests/kube-scheduler-config.large.yaml
+    mountPath: /etc/kubernetes/manifests/kube-scheduler-config.large.yaml
+    readOnly: true
+    pathType: File
 controllerManager:
   extraArgs:
   - name: concurrent-deployment-syncs
