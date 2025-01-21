@@ -190,6 +190,9 @@ func run(ctx context.Context, mgr manager.Manager, selector string, nPods int, f
 		klog.Fatalf("Error waiting for ReplicaSets: %v", err)
 	}
 
+	// wait for rate limiter
+	<-time.After(60 * time.Second)
+
 	nPodsPerTarget := nPods / len(targets.Items)
 	if nPodsPerTarget == 0 {
 		klog.Warning("The number of pods scaled per target is 0, resetting to 1")
@@ -202,6 +205,7 @@ func run(ctx context.Context, mgr manager.Manager, selector string, nPods int, f
 		target := &targets.Items[i]
 		monitor.Watch(wg, workload.KeyFromObject(target), nPodsPerTarget)
 	}
+	klog.Infof("Monitoring %d ReplicaSets", len(targets.Items))
 
 	klog.Infof("Scaling up %d targets, %d pods each", len(targets.Items), nPodsPerTarget)
 	start := time.Now()

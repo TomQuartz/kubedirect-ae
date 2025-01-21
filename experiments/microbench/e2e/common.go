@@ -10,7 +10,9 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	autoscalingv1 "k8s.io/api/autoscaling/v1"
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
+	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
 
@@ -149,11 +151,31 @@ func run(ctx context.Context, mgr manager.Manager, selector string, nPods int) {
 		workload.CtrlListOptions...,
 	)
 	if err := mgrClient.List(ctx, targets, listOpts...); err != nil {
-		klog.Fatalf("Error listing deployments: %v", err)
+		klog.Fatalf("Error listing Deployments: %v", err)
 	}
 	if len(targets.Items) == 0 {
-		klog.Fatal("No deployment selected")
+		klog.Fatal("No Deployment selected")
 	}
+
+	waitForReplicaSets := func(ctx context.Context) (bool, error) {
+		rsList := &appsv1.ReplicaSetList{}
+		if err := mgrClient.List(ctx, rsList, listOpts...); err != nil {
+			klog.Fatalf("Error listing ReplicaSets: %v", err)
+		}
+		for i := range rsList.Items {
+			rs := &rsList.Items[i]
+			if metav1.GetControllerOfNoCopy(rs) == nil {
+				klog.Fatalf("ReplicaSet %s/%s has no owner", rs.Namespace, rs.Name)
+			}
+		}
+		return len(rsList.Items) == len(targets.Items), nil
+	}
+	if err := wait.PollUntilContextCancel(ctx, 1*time.Second, false, waitForReplicaSets); err != nil {
+		klog.Fatalf("Error waiting for ReplicaSets: %v", err)
+	}
+
+	// wait for rate limiter
+	<-time.After(60 * time.Second)
 
 	nPodsPerTarget := nPods / len(targets.Items)
 	if nPodsPerTarget == 0 {
