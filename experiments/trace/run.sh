@@ -23,6 +23,7 @@ baseline=$1
 case $baseline in
     "kd")
         trace_template="config/kd.ksvc.template.yaml"
+        workload_daemonset="config/kd.daemonset.yaml"
         arg_gateway="-gateway=knative"
         ;;
     # NOTE: for + baselines, caller should setup custom kubelet service WITHOUT --simulate flag
@@ -81,7 +82,7 @@ export NAME="workload-daemonset"
 cat $workload_daemonset | envsubst | kubectl apply -f -
 
 # read -p "Press enter to continue..."
-sleep 60
+sleep 120
 
 echo "Starting trace client with args: $@ $arg_gateway $arg_backend $arg_autoscaler $arg_autoscaler_config $arg_loader $arg_output"
 
