@@ -142,8 +142,7 @@ function clean_watch {
 function clean_kubeadm {
     clean_watch
     for host in $(hosts); do
-    {
-        ssh -q $host -- <<EOF
+        ssh -q $host -- <<EOF &
             sudo kubeadm reset -f
             sleep 30
             sudo journalctl --rotate --vacuum-time=1s
@@ -167,7 +166,6 @@ function clean_kubeadm {
             sudo setfacl -m "user:$USER:rw" /var/run/docker.sock
             rm -rf ~/.kube
 EOF
-    } &
     done
     wait
 }

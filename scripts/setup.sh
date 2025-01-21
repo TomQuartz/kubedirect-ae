@@ -28,11 +28,11 @@ EOF
     chmod 600 ~/.ssh/config && chmod 700 ~/.ssh
 
     for host in $(hosts); do
-    { 
+    (
         scp ~/.ssh/id_rsa $host:~/.ssh/ # >/dev/null 2>&1
         ssh -q $host -- chmod 600 ~/.ssh/id_rsa
         ssh -q $host -- sudo hostnamectl set-hostname $host 
-    } &
+    ) &
     done
     wait
 }
@@ -40,11 +40,11 @@ EOF
 function setup_scripts {
     echo "Copying scripts across cluster..."
     for host in $(hosts); do
-    {
+    (
         ssh -q $host -- rm -rf ~/.kubedirect
         ssh -q $host -- mkdir -p ~/.kubedirect
         scp -r $BASE_DIR $host:~/.kubedirect
-    } &
+    ) &
     done
     wait
 }
@@ -78,21 +78,19 @@ function setup_reboot {
     setup_ssh
     echo "Resetting configurations after reboot..."
     for host in $(hosts); do
-    {
-        ssh -q $host -- <<EOF
-        sudo ufw disable
-        sudo setenforce 0
-        sudo swapoff -a
-        sudo sed -ri 's/.*swap.*/#&/' /etc/fstab
-        sudo systemctl mask swap.target
-        sudo modprobe overlay
-        sudo modprobe br_netfilter
-        sudo sysctl --system
-        sudo usermod -aG docker $USER
-        sudo systemctl restart docker.serive docker.socket
-        sudo setfacl -m "user:$USER:rw" /var/run/docker.sock
+        ssh -q $host -- <<EOF &
+            sudo ufw disable
+            sudo setenforce 0
+            sudo swapoff -a
+            sudo sed -ri 's/.*swap.*/#&/' /etc/fstab
+            sudo systemctl mask swap.target
+            sudo modprobe overlay
+            sudo modprobe br_netfilter
+            sudo sysctl --system
+            sudo usermod -aG docker $USER
+            sudo systemctl restart docker.serive docker.socket
+            sudo setfacl -m "user:$USER:rw" /var/run/docker.sock
 EOF
-    } &
     done
     wait
 }

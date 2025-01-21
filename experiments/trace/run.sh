@@ -91,6 +91,17 @@ go run . $@ $arg_gateway $arg_backend $arg_autoscaler $arg_autoscaler_config $ar
 
 # cleanup
 sleep 30
-kubectl delete deployment -l workload=trace || true
-kubectl delete ksvc -l workload=trace || true
+case $baseline in
+"kd")
+    kubectl delete ksvc --all || true
+    kubectl delete cfg --all || true
+    kubectl delete rev --all || true
+    kubectl delete route --all || true
+    kubectl delete deployment -l workload=trace || true
+    kubectl delete replicaset -l workload=trace || true
+    ;;
+"k8s+"|"kd+")
+    kubectl delete deployment -l workload=trace || true
+    ;;
+esac
 cat $workload_daemonset | envsubst | kubectl delete -f -

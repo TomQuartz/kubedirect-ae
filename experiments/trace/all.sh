@@ -7,7 +7,7 @@ cd $BASE_DIR
 set -x
 
 RUN=${1:-"test"}
-verbosity=${2:-"0"}
+verbosity=${2:-"1"}
 n_traces=${3:-"500"}
 
 # normal size cluster

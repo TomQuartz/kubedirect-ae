@@ -370,9 +370,9 @@ spec:
             # Setting these values using env vars is possible since https://github.com/knative/pkg/pull/2755.
             # 200 is an arbitrary value, but it speeds up kourier startup duration, and the whole ingress reconciliation process as a whole.
             - name: KUBE_API_BURST
-              value: "200"
+              value: "800"
             - name: KUBE_API_QPS
-              value: "200"
+              value: "400"
           ports:
             - name: http2-xds
               containerPort: 18000
@@ -481,7 +481,8 @@ spec:
     spec:
       containers:
         - args:
-            - --base-id 1
+            # - --base-id 1
+            - --use-dynamic-base-id
             - -c /tmp/config/envoy-bootstrap.yaml
             - --log-level info
             - --drain-time-s $(DRAIN_TIME_SECONDS)

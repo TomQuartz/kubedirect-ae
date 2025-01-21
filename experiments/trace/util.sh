@@ -23,12 +23,12 @@ function kubeadm_up {
         $ROOT_DIR/scripts/kubeadm.sh clean
         sleep 10
     done
-    sleep 30
+    sleep 60
 }
 
 function kubeadm_down {
     $ROOT_DIR/scripts/kubeadm.sh clean
-    sleep 60
+    sleep 30
 }
 
 # usage: custom_kubelet_up [watch] [#workers]
@@ -37,7 +37,7 @@ function custom_kubelet_up {
         local verbose="-v=2"
     fi
     $ROOT_DIR/scripts/kubelet.sh run $@ -- -ready-after=200 $verbose
-    sleep 30
+    sleep 60
 }
 
 function custom_kubelet_down {
@@ -47,7 +47,7 @@ function custom_kubelet_down {
 
 function knative_up {
     $ROOT_DIR/scripts/knative.sh run
-    sleep 30
+    sleep 60
 }
 
 function knative_down {

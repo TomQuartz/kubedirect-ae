@@ -29,11 +29,11 @@ function build_kubelet {
 
     echo "Distributing kubelet binary..."
     for host in $(hosts); do
-    {
+    (
         scp _output/bin/kubelet $host:~/kubelet # >/dev/null 2>&1
         ssh -q $host -- sudo systemctl stop kubelet
         ssh -q $host -- sudo mv ~/kubelet /usr/bin/kubelet
-    } &
+    ) &
     done
     wait
 }
