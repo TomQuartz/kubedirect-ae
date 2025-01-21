@@ -10,7 +10,7 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	autoscalingv1 "k8s.io/api/autoscaling/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/util/sets"
+	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
 
@@ -158,59 +158,56 @@ func run(ctx context.Context, mgr manager.Manager, selector string, nPods int, f
 	}
 	mgrClient := mgr.GetClient()
 
-	monitorTargets := &appsv1.ReplicaSetList{}
+	targets := &appsv1.DeploymentList{}
 	listOpts := append(
 		[]client.ListOption{client.MatchingLabels{"workload": selector}},
 		workload.CtrlListOptions...,
 	)
-	if err := mgrClient.List(ctx, monitorTargets, listOpts...); err != nil {
-		klog.Fatalf("Error listing ReplicaSet: %v", err)
+	if err := mgrClient.List(ctx, targets, listOpts...); err != nil {
+		klog.Fatalf("Error listing Deployments: %v", err)
 	}
-	if len(monitorTargets.Items) == 0 {
-		klog.Fatalf("No ReplicaSet selected")
-	}
-
-	targetKeys := sets.New[string]()
-	targets := []*appsv1.Deployment{}
-	for i := range monitorTargets.Items {
-		rs := &monitorTargets.Items[i]
-		if fallback && kdutil.IsManaged(rs) {
-			klog.Fatalf("ReplicaSet %s/%s must not be managed in fallback mode", rs.Namespace, rs.Name)
-		}
-		key := workload.KeyFromObject(rs)
-		ownerRef := metav1.GetControllerOfNoCopy(rs)
-		if ownerRef == nil {
-			klog.Fatalf("ReplicaSet %s/%s has no owner", rs.Namespace, rs.Name)
-		}
-		owner := &appsv1.Deployment{}
-		if err := mgrClient.Get(ctx, workload.NamespacedNameFromKey(key), owner); err != nil {
-			klog.Fatalf("Error getting deployment target %s from ReplicaSet %s: %v", key, klog.KObj(rs), err)
-		}
-		if targetKeys.Has(key) {
-			klog.Fatalf("Duplicate deployment target %s from ReplicaSet %s/%s", key, rs.Namespace, rs.Name)
-		}
-		targetKeys.Insert(key)
-		targets = append(targets, owner)
+	if len(targets.Items) == 0 {
+		klog.Fatalf("No Deployment selected")
 	}
 
-	nPodsPerTarget := nPods / len(targets)
+	waitForReplicaSets := func(ctx context.Context) (bool, error) {
+		rsList := &appsv1.ReplicaSetList{}
+		if err := mgrClient.List(ctx, rsList, listOpts...); err != nil {
+			klog.Fatalf("Error listing ReplicaSets: %v", err)
+		}
+		for i := range rsList.Items {
+			rs := &rsList.Items[i]
+			if fallback && kdutil.IsManaged(rs) {
+				klog.Fatalf("ReplicaSet %s/%s must not be managed in fallback mode", rs.Namespace, rs.Name)
+			}
+			if metav1.GetControllerOfNoCopy(rs) == nil {
+				klog.Fatalf("ReplicaSet %s/%s has no owner", rs.Namespace, rs.Name)
+			}
+		}
+		return len(rsList.Items) == len(targets.Items), nil
+	}
+	if err := wait.PollUntilContextCancel(ctx, 1*time.Second, false, waitForReplicaSets); err != nil {
+		klog.Fatalf("Error waiting for ReplicaSets: %v", err)
+	}
+
+	nPodsPerTarget := nPods / len(targets.Items)
 	if nPodsPerTarget == 0 {
 		klog.Warning("The number of pods scaled per target is 0, resetting to 1")
 		nPodsPerTarget = 1
 	}
 
 	wg := &sync.WaitGroup{}
-	wg.Add(len(targets))
-	for i := range targets {
-		target := targets[i]
+	wg.Add(len(targets.Items))
+	for i := range targets.Items {
+		target := &targets.Items[i]
 		monitor.Watch(wg, workload.KeyFromObject(target), nPodsPerTarget)
 	}
 
-	klog.Infof("Scaling up %d targets, %d pods each", len(targets), nPodsPerTarget)
+	klog.Infof("Scaling up %d targets, %d pods each", len(targets.Items), nPodsPerTarget)
 	start := time.Now()
 	errs := int32(0)
-	for i := range targets {
-		target := targets[i]
+	for i := range targets.Items {
+		target := &targets.Items[i]
 		go func() {
 			desiredScale := &autoscalingv1.Scale{Spec: autoscalingv1.ScaleSpec{Replicas: int32(nPodsPerTarget)}}
 			if err := mgrClient.SubResource("scale").Update(ctx, target, client.WithSubResourceBody(desiredScale)); err != nil {
@@ -220,9 +217,10 @@ func run(ctx context.Context, mgr manager.Manager, selector string, nPods int, f
 			}
 		}()
 	}
+	klog.InfoS("All targets scaled up, waiting for expectations", "elapsed", time.Since(start))
 	wg.Wait()
 	klog.Info("Done")
 
 	nErrs := int(atomic.LoadInt32(&errs))
-	fmt.Printf("total: %v us (%d/%d)\n", time.Since(start).Microseconds(), len(targets)-nErrs, len(targets))
+	fmt.Printf("total: %v us (%d/%d)\n", time.Since(start).Microseconds(), len(targets.Items)-nErrs, len(targets.Items))
 }
