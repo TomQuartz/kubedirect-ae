@@ -2,7 +2,6 @@ package backend
 
 import (
 	"context"
-	"strings"
 	"time"
 
 	"golang.design/x/chann"
@@ -13,11 +12,12 @@ import (
 	// Kubedirect
 	"github.com/tomquartz/kubedirect-bench/pkg/workload"
 	"github.com/tomquartz/kubedirect-bench/pkg/workload/handler/proto"
+	grpccodes "google.golang.org/grpc/codes"
+	grpcstatus "google.golang.org/grpc/status"
 )
 
 const (
-	grpcExecutorConcurrency = 80
-	grpcExecutorTimeout     = 15 * time.Second
+	grpcExecutorConcurrency = 50
 )
 
 type grpcBackend struct {
@@ -58,7 +58,7 @@ func (g *grpcBackend) Execute(ctx context.Context, req *workload.Request) *workl
 	defer func() { g.connectionPool.In() <- conn }()
 	grpcExecutor := proto.NewExecutorClient(conn)
 
-	execContext, cancelExecution := context.WithTimeout(ctx, grpcExecutorTimeout)
+	execContext, cancelExecution := context.WithTimeout(ctx, executorTimeout)
 	defer cancelExecution()
 
 	req.GatewaySendTS = time.Now()
@@ -68,10 +68,10 @@ func (g *grpcBackend) Execute(ctx context.Context, req *workload.Request) *workl
 	})
 	if err != nil {
 		logger.V(1).Info("[WARN] gRPC request failed", "error", err)
-		if strings.Contains(err.Error(), "overflow") {
-			res.Status = workload.FAIL_SEND
-		} else {
+		if grpcErr := grpcstatus.Convert(err); grpcErr.Code() == grpccodes.DeadlineExceeded {
 			res.Status = workload.FAIL_RECV
+		} else {
+			res.Status = workload.FAIL_SEND
 		}
 		return res
 	}

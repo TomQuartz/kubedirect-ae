@@ -25,12 +25,14 @@ case $baseline in
         trace_template="config/kd.ksvc.template.yaml"
         workload_daemonset="config/kd.daemonset.yaml"
         arg_gateway="-gateway=knative"
+        arg_timeout="-timeout=300"
         ;;
     # NOTE: for + baselines, caller should setup custom kubelet service WITHOUT --simulate flag
     "k8s+")
         trace_template="config/k8s.deployment.template.yaml"
         workload_daemonset="config/k8s.daemonset.yaml"
         arg_gateway="-gateway=k8s"
+        arg_timeout="-timeout=300"
         arg_autoscaler="-autoscaler=kpa"
         arg_autoscaler_config="-autoscaler-config=config/autoscaler.knative.yaml"
         ;;
@@ -38,6 +40,7 @@ case $baseline in
         trace_template="config/kd.deployment.template.yaml"
         workload_daemonset="config/kd.daemonset.yaml"
         arg_gateway="-gateway=k8s"
+        arg_timeout="-timeout=30"
         arg_autoscaler="-autoscaler=kpa"
         arg_autoscaler_config="-autoscaler-config=config/autoscaler.dirigent.yaml"
         ;;
@@ -84,9 +87,9 @@ cat $workload_daemonset | envsubst | kubectl apply -f -
 # read -p "Press enter to continue..."
 sleep 120
 
-echo "Starting trace client with args: $@ $arg_gateway $arg_backend $arg_autoscaler $arg_autoscaler_config $arg_loader $arg_output"
+echo "Starting trace client with args: $@ $arg_gateway $arg_timeout $arg_autoscaler $arg_autoscaler_config $arg_loader $arg_output"
 
-go run . $@ $arg_gateway $arg_backend $arg_autoscaler $arg_autoscaler_config $arg_loader $arg_output \
+go run . $@ $arg_gateway $arg_autoscaler $arg_autoscaler_config $arg_loader $arg_output \
     >stderr.log 2>&1
 
 # cleanup

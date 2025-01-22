@@ -49,9 +49,9 @@ var autoscalerFramework string
 var autoscalerConfig string
 var traceLoaderConfig string
 var outputPath string
+var requestTimeoutSeconds int
 
 // var dispatchTimeoutSeconds int
-// var requestTimeoutSeconds int
 
 func validateFlags() {
 	if traceLoaderConfig == "" {
@@ -100,13 +100,14 @@ func main() {
 	flag.StringVar(&autoscalerConfig, "autoscaler-config", "", "The path to the autoscaler config file, only applicable to k8s gateway")
 	flag.StringVar(&traceLoaderConfig, "loader-config", "config/loader.json", "The path to the trace loader configuration file")
 	flag.StringVar(&outputPath, "output", "trace.log", "The path to the output file")
+	flag.IntVar(&requestTimeoutSeconds, "timeout", 15, "The timeout in seconds for a request to be cancelled in execution stage")
 	// flag.IntVar(&dispatchTimeoutSeconds, "timeout", 15, "The timeout in seconds for a request to be cancelled in dispatch stage")
-	// flag.IntVar(&requestTimeoutSeconds, "timeout", 15, "The timeout in seconds for a request to be cancelled in execution stage")
 	flag.Parse()
 
 	validateFlags()
 	backend.Use(backendFramework)
-	klog.InfoS("Running trace with options", "backend", backendFramework, "gateway", gatewayFramework, "autoscaler", autoscalerFramework, "autoscaler-config", autoscalerConfig, "loader-config", traceLoaderConfig, "output", outputPath, "dir", baseDir)
+	backend.WithTimeout(time.Duration(requestTimeoutSeconds) * time.Second)
+	klog.InfoS("Running trace with options", "backend", backendFramework, "timeout", requestTimeoutSeconds, "gateway", gatewayFramework, "autoscaler", autoscalerFramework, "autoscaler-config", autoscalerConfig, "loader-config", traceLoaderConfig, "output", outputPath, "dir", baseDir)
 
 	ctx := ctrl.SetupSignalHandler()
 	ctx, cancel := context.WithCancel(ctx)

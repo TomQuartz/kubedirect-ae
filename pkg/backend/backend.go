@@ -3,6 +3,7 @@ package backend
 import (
 	"context"
 	"fmt"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 
@@ -17,9 +18,14 @@ type Executor interface {
 }
 
 var framework string
+var executorTimeout time.Duration
 
 func Use(f string) {
 	framework = f
+}
+
+func WithTimeout(t time.Duration) {
+	executorTimeout = t
 }
 
 func NewBackend(endpoint string) (Executor, error) {
