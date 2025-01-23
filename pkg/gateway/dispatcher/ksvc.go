@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/go-logr/logr"
 	"k8s.io/klog/v2"
@@ -19,15 +20,17 @@ const (
 
 type KnServiceDispatcher struct {
 	target   string
+	timeout  time.Duration
 	reqChan  <-chan *workload.Request
 	resChan  chan<- *workload.Response
 	endpoint string
 	executor backend.Executor
 }
 
-func NewKnServiceDispatcher(ctx context.Context, target string, reqChan <-chan *workload.Request, resChan chan<- *workload.Response, url string) (*KnServiceDispatcher, error) {
+func NewKnServiceDispatcher(ctx context.Context, target string, timeout time.Duration, reqChan <-chan *workload.Request, resChan chan<- *workload.Response, url string) (*KnServiceDispatcher, error) {
 	kd := &KnServiceDispatcher{
 		target:   target,
+		timeout:  timeout,
 		reqChan:  reqChan,
 		resChan:  resChan,
 		endpoint: strings.TrimPrefix(url, "http://") + kourierGatewayServicePort,
@@ -41,6 +44,9 @@ func NewKnServiceDispatcher(ctx context.Context, target string, reqChan <-chan *
 }
 
 func (kd *KnServiceDispatcher) Dispatch(ctx context.Context, _ logr.Logger, req *workload.Request) {
+	// kn dispatcher is integrated with gateway service, so add the timeout
+	ctx, cancel := context.WithTimeout(ctx, kd.timeout+backend.Timeout(req))
+	defer cancel()
 	res := kd.executor.Execute(ctx, req)
 	kd.resChan <- res
 }

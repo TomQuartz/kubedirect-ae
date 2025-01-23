@@ -11,12 +11,11 @@ type ResponseStatus int
 
 const (
 	SUCCESS ResponseStatus = iota
-	FAIL_OVERFLOW
+	FAIL_DISPATCH
 	FAIL_TIMEOUT
 	FAIL_CONNECT
 	FAIL_SEND
 	FAIL_RECV
-	FAIL_UNMARSHALL
 	INVALID_TARGET
 )
 
@@ -26,12 +25,11 @@ func (rs ResponseStatus) String() string {
 
 var responseStatusReadable = []string{
 	"SUCCESS",
-	"FAIL_OVERFLOW",
+	"FAIL_DISPATCH",
 	"FAIL_TIMEOUT",
 	"FAIL_CONNECT",
 	"FAIL_SEND",
 	"FAIL_RECV",
-	"FAIL_UNMARSHALL",
 	"INVALID_TARGET",
 }
 

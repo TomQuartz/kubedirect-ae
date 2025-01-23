@@ -28,3 +28,33 @@ function workers {
 function docker_images {
     docker images --format '{{.Repository}}:{{.Tag}}'
 }
+
+function wait_for_pods {
+    local selector=$1
+    if [ -n "$2" ]; then
+        local namespace="-n $2"
+    fi
+    while true; do
+        local pods=$(kubectl get pods $namespace -l $selector -o jsonpath='{.items[*].metadata.name}')
+        if [ -z "$pods" ]; then
+            echo "no pods found"
+            return 1
+        fi
+        local desired=0
+        local ready=0
+        for pod in $pods; do
+            desired=$((desired+1))
+            if [ "$(kubectl get pods $namespace $pod -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}')" == "True" ]; then
+                ready=$((ready+1))
+            elif kubectl get pods $namespace $pod --no-headers | grep -iq CrashLoopBackOff; then
+                echo "pod $pod crashed"
+                kubectl delete pod $namespace $pod
+            fi
+        done
+        if [ $ready -eq $desired ]; then
+            echo "all pods are ready"
+            break
+        fi
+        sleep 20
+    done
+}

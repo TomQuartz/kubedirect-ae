@@ -2,6 +2,7 @@
 
 BASE_DIR=`realpath $(dirname $0)`
 cd $BASE_DIR
+. util.sh
 
 set -x
 
@@ -87,9 +88,12 @@ cat $workload_daemonset | envsubst | kubectl apply -f -
 # read -p "Press enter to continue..."
 sleep 120
 
+# wait for daemonsets
+wait_for_pods "kubedirect/workload-pool"
+
 echo "Starting trace client with args: $@ $arg_gateway $arg_timeout $arg_autoscaler $arg_autoscaler_config $arg_loader $arg_output"
 
-go run . $@ $arg_gateway $arg_autoscaler $arg_autoscaler_config $arg_loader $arg_output \
+go run . $@ $arg_gateway $arg_timeout $arg_autoscaler $arg_autoscaler_config $arg_loader $arg_output \
     >stderr.log 2>&1
 
 # cleanup

@@ -58,18 +58,15 @@ func (g *grpcBackend) Execute(ctx context.Context, req *workload.Request) *workl
 	defer func() { g.connectionPool.In() <- conn }()
 	grpcExecutor := proto.NewExecutorClient(conn)
 
-	execContext, cancelExecution := context.WithTimeout(ctx, executorTimeout)
-	defer cancelExecution()
-
 	req.GatewaySendTS = time.Now()
-	faasResponse, err := grpcExecutor.Execute(execContext, &proto.FaasRequest{
+	faasResponse, err := grpcExecutor.Execute(ctx, &proto.FaasRequest{
 		Message:         "request",
 		RuntimeMilliSec: uint32(req.DurationMilliSec),
 	})
 	if err != nil {
 		logger.V(1).Info("[WARN] gRPC request failed", "error", err)
 		if grpcErr := grpcstatus.Convert(err); grpcErr.Code() == grpccodes.DeadlineExceeded {
-			res.Status = workload.FAIL_RECV
+			res.Status = workload.FAIL_TIMEOUT
 		} else {
 			res.Status = workload.FAIL_SEND
 		}

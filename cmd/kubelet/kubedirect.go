@@ -1,18 +1,17 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"time"
 
+	"golang.org/x/exp/rand"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/apimachinery/pkg/util/strategicpatch"
 	"k8s.io/apimachinery/pkg/util/wait"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
@@ -29,6 +28,10 @@ import (
 	kdproto "k8s.io/kubedirect/pkg/rpc/proto"
 	kdutil "k8s.io/kubedirect/pkg/util"
 )
+
+func init() {
+	rand.Seed(uint64(time.Now().UnixNano()))
+}
 
 // impl kdrpc.Registerer
 func (s *KubedirectServer) Register(sr grpc.ServiceRegistrar) {
@@ -130,18 +133,19 @@ func (s *KubedirectServer) getRefPodStatus(pod *corev1.Pod) (*corev1.PodStatus, 
 	if err != nil {
 		return nil, fmt.Errorf("failed to list pods from workload pool: %v", err)
 	}
-	var matchingPod *corev1.Pod
-	for _, wPod := range workloadPool {
-		if wPod.Spec.NodeName == pod.Spec.NodeName && kdutil.IsPodReady(wPod) {
-			matchingPod = wPod
-			break
+	readyPods := make([]*corev1.Pod, 0, len(workloadPool))
+	for i := range workloadPool {
+		pod := workloadPool[i]
+		if kdutil.IsPodReady(pod) {
+			readyPods = append(readyPods, pod)
 		}
 	}
-	if matchingPod == nil {
+	if len(readyPods) == 0 {
 		return nil, fmt.Errorf("no ready pod matches the workload")
 	}
-
-	refStatus := matchingPod.Status.DeepCopy()
+	// randomly select a ready pod from pool
+	refPod := readyPods[rand.Intn(len(readyPods))]
+	refStatus := refPod.Status.DeepCopy()
 	tweakRefPodStatus(refStatus)
 	return refStatus, nil
 }
@@ -258,16 +262,12 @@ func (s *KubedirectServer) markPodReadyByUpdate(ctx context.Context, pod *corev1
 func (s *KubedirectServer) markPodReadyByPatch(ctx context.Context, pod *corev1.Pod, refStatus *corev1.PodStatus) (*corev1.Pod, error) {
 	logger := klog.FromContext(ctx)
 	kdLogger := kdutil.NewLogger(logger).WithHeader("Patch").WithValues("pod", klog.KObj(pod))
-	patchBytes, unchanged, err := preparePatchBytesForPodStatus(pod.Namespace, pod.Name, pod.UID, pod.Status, *refStatus)
+	patchBytes, err := prepareMergePatchBytesForPodStatus(pod.Namespace, pod.Name, pod.UID, *refStatus)
 	if err != nil {
 		return nil, err
 	}
-	if unchanged {
-		kdLogger.V(2).DEBUG("Pod status unchanged, will ignore")
-		return pod, nil
-	}
 	start := time.Now()
-	updatedPod, err := s.GetClient(pod.Spec.NodeName).CoreV1().Pods(pod.Namespace).Patch(ctx, pod.Name, types.StrategicMergePatchType, patchBytes, metav1.PatchOptions{}, "status")
+	updatedPod, err := s.GetClient(pod.Spec.NodeName).CoreV1().Pods(pod.Namespace).Patch(ctx, pod.Name, types.MergePatchType, patchBytes, metav1.PatchOptions{}, "status")
 	if err != nil {
 		return nil, fmt.Errorf("failed to patch status %q: %v", patchBytes, err)
 	}
@@ -275,25 +275,37 @@ func (s *KubedirectServer) markPodReadyByPatch(ctx context.Context, pod *corev1.
 	return updatedPod, nil
 }
 
-func preparePatchBytesForPodStatus(namespace, name string, uid types.UID, oldPodStatus, newPodStatus corev1.PodStatus) ([]byte, bool, error) {
-	oldData, err := json.Marshal(corev1.Pod{
-		Status: oldPodStatus,
-	})
-	if err != nil {
-		return nil, false, fmt.Errorf("failed to Marshal oldData for pod %q/%q: %v", namespace, name, err)
-	}
-
-	newData, err := json.Marshal(corev1.Pod{
+func prepareMergePatchBytesForPodStatus(namespace, name string, uid types.UID, newPodStatus corev1.PodStatus) ([]byte, error) {
+	patchBytes, err := json.Marshal(corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{UID: uid}, // only put the uid in the new object to ensure it appears in the patch as a precondition
 		Status:     newPodStatus,
 	})
 	if err != nil {
-		return nil, false, fmt.Errorf("failed to Marshal newData for pod %q/%q: %v", namespace, name, err)
+		return nil, fmt.Errorf("failed to Marshal newData for pod %q/%q: %v", namespace, name, err)
 	}
 
-	patchBytes, err := strategicpatch.CreateTwoWayMergePatch(oldData, newData, corev1.Pod{})
-	if err != nil {
-		return nil, false, fmt.Errorf("failed to CreateTwoWayMergePatch for pod %q/%q: %v", namespace, name, err)
-	}
-	return patchBytes, bytes.Equal(patchBytes, []byte(fmt.Sprintf(`{"metadata":{"uid":%q}}`, uid))), nil
+	return patchBytes, nil
 }
+
+// func prepareStrategicPatchBytesForPodStatus(namespace, name string, uid types.UID, oldPodStatus, newPodStatus corev1.PodStatus) ([]byte, bool, error) {
+// 	oldData, err := json.Marshal(corev1.Pod{
+// 		Status: oldPodStatus,
+// 	})
+// 	if err != nil {
+// 		return nil, false, fmt.Errorf("failed to Marshal old status for pod %q/%q: %v", namespace, name, err)
+// 	}
+
+// 	newData, err := json.Marshal(corev1.Pod{
+// 		ObjectMeta: metav1.ObjectMeta{UID: uid}, // only put the uid in the new object to ensure it appears in the patch as a precondition
+// 		Status:     newPodStatus,
+// 	})
+// 	if err != nil {
+// 		return nil, false, fmt.Errorf("failed to Marshal new status for pod %q/%q: %v", namespace, name, err)
+// 	}
+
+// 	patchBytes, err := strategicpatch.CreateTwoWayMergePatch(oldData, newData, corev1.Pod{})
+// 	if err != nil {
+// 		return nil, false, fmt.Errorf("failed to CreateTwoWayMergePatch for pod %q/%q: %v", namespace, name, err)
+// 	}
+// 	return patchBytes, bytes.Equal(patchBytes, []byte(fmt.Sprintf(`{"metadata":{"uid":%q}}`, uid))), nil
+// }

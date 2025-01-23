@@ -3,6 +3,7 @@ package gateway
 import (
 	"context"
 	"fmt"
+	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog/v2"
@@ -18,11 +19,13 @@ import (
 type knativeGateway struct {
 	*gatewayImpl
 	*knclient.Clientset
+	dispatchTimeout time.Duration
 	dispatchers map[string]*dispatcher.KnServiceDispatcher
 }
 
-func NewKnativeGateway() (*knativeGateway, error) {
+func NewKnativeGateway(dispatchTimeout time.Duration) (*knativeGateway, error) {
 	g := &knativeGateway{
+		dispatchTimeout: dispatchTimeout,
 		dispatchers: make(map[string]*dispatcher.KnServiceDispatcher),
 	}
 	g.gatewayImpl = newGatewayImpl(g.onReqIn, g.onReqOut)
@@ -66,7 +69,7 @@ func (g *knativeGateway) SetUpWithManager(ctx context.Context, mgr manager.Manag
 		reqBuffer, resBuffer := g.internalBuffers(key)
 		// create dispatcher
 		url := service.Status.URL.String()
-		kd, err := dispatcher.NewKnServiceDispatcher(ctx, key, reqBuffer, resBuffer, url)
+		kd, err := dispatcher.NewKnServiceDispatcher(ctx, key, g.dispatchTimeout, reqBuffer, resBuffer, url)
 		if err != nil {
 			return fmt.Errorf("failed to create knative service dispatcher for %v (%v): %v", klog.KObj(service), url, err)
 		}

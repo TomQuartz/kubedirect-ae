@@ -18,41 +18,11 @@ function run_knative {
     kubectl apply -f $MANIFESTS_DIR/knative/kourier.yaml
     # read -p "Press enter to continue..."
     sleep 20
-    # check kourier controller
-    for i in $(seq 1 10); do
-        local ctrl_pod=$(kubectl get pods -n knative-serving -l app=net-kourier-controller -o jsonpath='{.items[0].metadata.name}')
-        if [ -z "$ctrl_pod" ]; then
-            echo "net-kourier-controller not found"
-            exit 1
-        elif [ "$(kubectl get pods -n knative-serving $ctrl_pod -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}')" == "True" ]; then
-            echo "net-kourier-controller is ready"
-            break
-        elif kubectl get pods -n knative-serving $ctrl_pod --no-headers | grep -iq CrashLoopBackOff; then
-            echo "net-kourier-controller crashed"
-            kubectl delete -n knative-serving pod $ctrl_pod
-        fi
-        sleep 20
-    done
-    # check kourier gateway
-    for i in $(seq 1 10); do
-        local gateway_pods=$(kubectl get pods -n kourier-system -l app=3scale-kourier-gateway -o jsonpath='{.items[*].metadata.name}')
-        local desired=0
-        local ready=0
-        for pod in $gateway_pods; do
-            desired=$((desired+1))
-            if [ "$(kubectl get pods -n kourier-system $pod -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}')" == "True" ]; then
-                ready=$((ready+1))
-            elif kubectl get pods -n kourier-system $pod --no-headers | grep -iq CrashLoopBackOff; then
-                echo "gateway pod $pod crashed"
-                kubectl delete -n kourier-system pod $pod
-            fi
-        done
-        if [ $ready -eq $desired ]; then
-            echo "all gateway pods are ready"
-            break
-        fi
-        sleep 20
-    done
+
+    # check kourier controller & gateway
+    wait_for_pods "app=net-kourier-controller" knative-serving || exit 1
+    wait_for_pods "app=3scale-kourier-gateway" kourier-system || exit 1
+    # read -p "Press enter to continue..."
     sleep 20
     
     # config ingress

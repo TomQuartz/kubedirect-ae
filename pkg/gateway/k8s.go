@@ -3,6 +3,7 @@ package gateway
 import (
 	"context"
 	"fmt"
+	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -27,6 +28,7 @@ import (
 
 type k8sGateway struct {
 	*gatewayImpl
+	dispatchTimeout time.Duration
 	logger          logr.Logger
 	client          client.Client
 	dispatchers     map[string]*dispatcher.PodDispatcher
@@ -34,9 +36,10 @@ type k8sGateway struct {
 	newAutoscalerFn func(ctx context.Context, mgr manager.Manager, keys ...string) (autoscaler.Autoscaler, error)
 }
 
-func NewK8sGateway(asFramework string, asConfigPath string) (*k8sGateway, error) {
+func NewK8sGateway(dispatchTimeout time.Duration, asFramework string, asConfigPath string) (*k8sGateway, error) {
 	g := &k8sGateway{
-		dispatchers: make(map[string]*dispatcher.PodDispatcher),
+		dispatchTimeout: dispatchTimeout,
+		dispatchers:     make(map[string]*dispatcher.PodDispatcher),
 	}
 	g.gatewayImpl = newGatewayImpl(g.onReqIn, g.onReqOut)
 
@@ -114,7 +117,7 @@ func (g *k8sGateway) SetUpWithManager(ctx context.Context, mgr manager.Manager) 
 		g.register(key)
 		reqBuffer, resBuffer := g.internalBuffers(key)
 		// default to concurrency 1
-		pd, err := dispatcher.NewPodDispatcher(ctx, key, reqBuffer, resBuffer)
+		pd, err := dispatcher.NewPodDispatcher(ctx, key, g.dispatchTimeout, reqBuffer, resBuffer)
 		if err != nil {
 			return fmt.Errorf("failed to create pod dispatcher for %v: %v", key, err)
 		}

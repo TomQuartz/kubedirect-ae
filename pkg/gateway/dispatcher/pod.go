@@ -20,8 +20,8 @@ import (
 )
 
 const (
-	podServiceConcurrency     = 1
-	podServiceDispatchTimeout = 300 * time.Second
+	podServiceConcurrency = 1
+	// podServiceDispatchTimeout = 15 * time.Second
 )
 
 // NOTE: we index by both pod name and ip:port to handle pod restarts and/or ip reuse for different pods
@@ -34,6 +34,7 @@ var podEndpointKeyFunc = func(pod *corev1.Pod) (key string, ep string) {
 // Directly dispatch request to a pod
 type PodDispatcher struct {
 	target    string
+	timeout   time.Duration
 	endpoints *kdutil.SharedMap[backend.Executor]
 	tokens    *chann.Chann[string]
 	reqChan   <-chan *workload.Request
@@ -41,9 +42,10 @@ type PodDispatcher struct {
 	logger    logr.Logger
 }
 
-func NewPodDispatcher(ctx context.Context, target string, reqChan <-chan *workload.Request, resChan chan<- *workload.Response) (*PodDispatcher, error) {
+func NewPodDispatcher(ctx context.Context, target string, timeout time.Duration, reqChan <-chan *workload.Request, resChan chan<- *workload.Response) (*PodDispatcher, error) {
 	pd := &PodDispatcher{
 		target:    target,
+		timeout:   timeout,
 		endpoints: kdutil.NewSharedMap[backend.Executor](),
 		tokens:    chann.New[string](),
 		reqChan:   reqChan,
@@ -53,7 +55,7 @@ func NewPodDispatcher(ctx context.Context, target string, reqChan <-chan *worklo
 }
 
 func (pd *PodDispatcher) dispatch(ctx context.Context) (string, backend.Executor) {
-	dispatchCtx, cancel := context.WithTimeout(ctx, podServiceDispatchTimeout)
+	dispatchCtx, cancel := context.WithTimeout(ctx, pd.timeout)
 	defer cancel()
 	for {
 		select {
@@ -77,12 +79,14 @@ func (pd *PodDispatcher) Dispatch(ctx context.Context, logger logr.Logger, req *
 		logger.V(1).Info("[WARN] Timeout dispatching request", "req", req.ID)
 		res := &workload.Response{
 			Source: req,
-			Status: workload.FAIL_TIMEOUT,
+			Status: workload.FAIL_DISPATCH,
 		}
 		pd.resChan <- res
 		return
 	}
 	// pd.logger.V(1).Info("Dispatching to pod", "req", req.ID, "endpoint", key)
+	ctx, cancel := context.WithTimeout(ctx, backend.Timeout(req))
+	defer cancel()
 	res := executor.Execute(ctx, req)
 	pd.tokens.In() <- key
 	pd.resChan <- res

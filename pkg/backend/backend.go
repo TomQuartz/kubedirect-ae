@@ -18,14 +18,22 @@ type Executor interface {
 }
 
 var framework string
-var executorTimeout time.Duration
+var baseTimeout = 15 * time.Second
+var timeoutFactor = 5.0
 
 func Use(f string) {
 	framework = f
 }
 
-func WithTimeout(t time.Duration) {
-	executorTimeout = t
+func WithSLO(factor float64) {
+	timeoutFactor = factor
+}
+
+func Timeout(req *workload.Request) time.Duration {
+	if slo := time.Duration(float64(req.DurationMilliSec)*timeoutFactor) * time.Millisecond; slo > baseTimeout {
+		return slo
+	}
+	return baseTimeout
 }
 
 func NewBackend(endpoint string) (Executor, error) {
