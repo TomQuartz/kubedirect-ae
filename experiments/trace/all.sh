@@ -22,6 +22,7 @@ for baseline in k8s+ kd+; do
     ./run.sh $baseline $n_traces -- -backend=grpc -v=$verbosity
     cp ./trace.log $RESULTS/$baseline.$n_traces.log
     cp ./stderr.log $RESULTS/stderr/$baseline.$n_traces.log
+    sleep 60
 done
 custom_kubelet_down
 
@@ -32,6 +33,7 @@ for baseline in kd ; do
     ./run.sh $baseline $n_traces -- -backend=grpc -v=$verbosity
     cp ./trace.log $RESULTS/$baseline.$n_traces.log
     cp ./stderr.log $RESULTS/stderr/$baseline.$n_traces.log
+    sleep 60
 done
 knative_down
 

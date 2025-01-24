@@ -8,4 +8,4 @@ kpa:
   maxScaleUpRate: 1000.0
   maxScaleDownRate: 2.0
   async: true
-  scaleDownDelaySeconds: 60
+  scaleDownDelaySeconds: 30

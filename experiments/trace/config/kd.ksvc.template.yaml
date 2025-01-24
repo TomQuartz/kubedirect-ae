@@ -25,7 +25,7 @@ spec:
         autoscaling.knative.dev/metric: "concurrency"
         autoscaling.knative.dev/target: "1"
         autoscaling.knative.dev/target-utilization-percentage: "100"
-        autoscaling.knative.dev/scale-down-delay: "60s"
+        autoscaling.knative.dev/scale-down-delay: "30s"
         autoscaling.knative.dev/scale-to-zero-pod-retention-period: "5m"
         autoscaling.knative.dev/window: "60s"
         autoscaling.knative.dev/panic-window-percentage: "10.0"
