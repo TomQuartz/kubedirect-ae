@@ -126,6 +126,7 @@ function watch_kubelet {
         echo "$pid: $worker kubelet -> $WATCH_LOG/kubelet-$worker.log"
         echo $pid >> $WATCH_DIR/pids
     done
+    sleep 5
 }
 
 function clean_watch {

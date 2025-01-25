@@ -102,13 +102,16 @@ LimitCORE=infinity
 LimitNOFILE=infinity
 EOF
 
+    # configure containerd
+    containerd config default | sudo tee /etc/containerd/config.toml >/dev/null 2>&1
+    
     # remove rlimits from containerd cri base spec
     # NOTE: this only affects containers run from cri, not docker or ctr
     ctr oci spec | jq 'del(.process.rlimits)' --indent 4 | sudo tee /etc/containerd/cri-base.json >/dev/null
-    
-    # use systemd as cgroup driver for k8s
-    containerd config default | sudo tee /etc/containerd/config.toml >/dev/null 2>&1
     sudo sed -i 's|base_runtime_spec = ""|base_runtime_spec = "/etc/containerd/cri-base.json"|g' /etc/containerd/config.toml
+    
+    # override pause and use systemd cgroup
+    sudo sed -i 's|sandbox_image = "registry.k8s.io/pause:3.8"|sandbox_image = "shengqipku/pause:3.10"|g' /etc/containerd/config.toml
     sudo sed -i 's|SystemdCgroup = false|SystemdCgroup = true|g' /etc/containerd/config.toml
 
     sudo systemctl daemon-reload
