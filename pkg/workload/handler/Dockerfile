@@ -1,7 +1,7 @@
 # Stage 0: Build #
 # Use the official Golang image to create a build artifact.
 # This is based on Debian and sets the GOPATH to /go.
-FROM golang:1.22.0 AS builder
+FROM golang:1.23.0 AS builder
 
 ARG TARGET_PLATFORM=knative
 

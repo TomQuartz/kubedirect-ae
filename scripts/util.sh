@@ -5,7 +5,7 @@ LOG_DIR=${LOG_DIR:-"$ROOT_DIR/log"}
 MANIFESTS_DIR=${MANIFESTS_DIR:-"$ROOT_DIR/manifests"}
 
 MY_REPO="shengqipku"
-K8S_BUILD_TAG="v1.31.0-kubedirect"
+K8S_BUILD_TAG="v1.32.0-kubedirect"
 
 function hosts {
     for n in $(grep -v "localhost" /etc/hosts | awk '{print $NF}'); do

@@ -2,7 +2,7 @@ kind: Cluster
 apiVersion: kind.x-k8s.io/v1alpha4
 nodes:
 - role: control-plane
-  image: shengqipku/kind-node:v1.31.0-kubedirect
+  image: shengqipku/kind-node:v1.32.0-kubedirect
   kubeadmConfigPatches:
   - |
     apiVersion: kubelet.config.k8s.io/v1beta1
