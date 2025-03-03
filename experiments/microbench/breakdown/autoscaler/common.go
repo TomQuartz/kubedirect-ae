@@ -9,189 +9,137 @@ import (
 
 	appsv1 "k8s.io/api/apps/v1"
 	autoscalingv1 "k8s.io/api/autoscaling/v1"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
-	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
 
-	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/event"
-	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
-	"sigs.k8s.io/controller-runtime/pkg/predicate"
-	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	// Kubedirect
+	benchutil "github.com/tomquartz/kubedirect-bench/pkg/util"
 	"github.com/tomquartz/kubedirect-bench/pkg/workload"
+	kdrpc "k8s.io/kubedirect/pkg/rpc"
+	kdproto "k8s.io/kubedirect/pkg/rpc/proto"
 	kdutil "k8s.io/kubedirect/pkg/util"
 )
 
-type CtrlWorkQueue = workqueue.TypedRateLimitingInterface[reconcile.Request]
+const (
+	testClient   = "test"
+	dpService    = "dp"
+	dialTimeout  = 5 * time.Second
+	dialInterval = 1 * time.Second
+)
 
-type Expectation struct {
-	wg      *sync.WaitGroup
-	done    int32
-	desired int
-}
-
-func NewExpectation(wg *sync.WaitGroup, desired int) *Expectation {
-	return &Expectation{
-		wg:      wg,
-		desired: desired,
+func doDeploymentHandshake(ctx context.Context, src string, dest string, client kdproto.DeploymentClient) (string, error) {
+	if src != testClient {
+		panic(fmt.Sprintf("invalid source: expected %s, got %s", testClient, src))
 	}
-}
-
-func (s *Expectation) Desired() int {
-	return s.desired
-}
-
-func (s *Expectation) Done() bool {
-	if atomic.CompareAndSwapInt32(&s.done, 0, 1) {
-		s.wg.Done()
-		return true
+	if dest != dpService {
+		panic(fmt.Sprintf("invalid destination: expected %s, got %s", dpService, dest))
 	}
-	return false
-}
-
-type ReplicaSetMonitor struct {
-	selector     string
-	expectations *kdutil.SharedMap[*Expectation]
-}
-
-func NewReplicaSetMonitor(selector string) *ReplicaSetMonitor {
-	return &ReplicaSetMonitor{
-		selector:     selector,
-		expectations: kdutil.NewSharedMap[*Expectation](),
+	msg := kdrpc.NewHandshakeRequest(src, dest)
+	epoch := msg.Epoch
+	resp, err := client.Handshake(ctx, msg)
+	if err != nil {
+		return "", err
 	}
-}
-
-func (m *ReplicaSetMonitor) Watch(wg *sync.WaitGroup, key string, desired int) {
-	m.expectations.Set(key, NewExpectation(wg, desired))
-}
-
-func (m *ReplicaSetMonitor) SetupWithManager(ctx context.Context, mgr ctrl.Manager) error {
+	if epoch != resp.Epoch {
+		return "", fmt.Errorf("epoch mismatch: expected %s, got %s", epoch, resp.Epoch)
+	}
 	logger := klog.FromContext(ctx)
-	kdLogger := kdutil.NewLogger(logger).WithHeader("Monitor").WithHeader("Scaling")
-
-	return ctrl.NewControllerManagedBy(mgr).
-		// WithOptions(controller.Options{
-		// 	MaxConcurrentReconciles: 256,
-		// }).
-		Named("breakdown_autoscaler").
-		WithEventFilter(predicate.NewPredicateFuncs(m.FilterEvent)).
-		Watches(&appsv1.ReplicaSet{}, handler.Funcs{
-			CreateFunc: func(_ context.Context, ev event.CreateEvent, q CtrlWorkQueue) {
-				rs := ev.Object.(*appsv1.ReplicaSet)
-				m.OnReplicaSetCreated(kdLogger, rs)
-			},
-			UpdateFunc: func(_ context.Context, ev event.UpdateEvent, q CtrlWorkQueue) {
-				old := ev.ObjectOld.(*appsv1.ReplicaSet)
-				new := ev.ObjectNew.(*appsv1.ReplicaSet)
-				m.OnReplicaSetUpdated(kdLogger, old, new)
-			},
-			DeleteFunc: func(_ context.Context, ev event.DeleteEvent, q CtrlWorkQueue) {
-				rs := ev.Object.(*appsv1.ReplicaSet)
-				m.OnReplicaSetDeleted(kdLogger, rs)
-			},
-			GenericFunc: func(_ context.Context, ev event.GenericEvent, q CtrlWorkQueue) {
-				kdLogger.WARN("Generic event", "event", ev)
-			},
-		}).
-		Complete(m)
+	kdLogger := kdutil.NewLogger(logger).WithHeader(fmt.Sprintf("Handshake->%v", dest))
+	kdLogger.Info("Handshake done", "epoch", epoch)
+	return epoch, nil
 }
 
-func (m *ReplicaSetMonitor) FilterEvent(object client.Object) bool {
-	return workload.IsWorkload(object) && object.GetLabels()["workload"] == m.selector
-}
+func newDeploymentServiceLister(ctx context.Context, uncachedClient client.Client) func(ctx context.Context) (addrs []string, err error) {
+	logger := klog.FromContext(ctx)
+	kdLogger := kdutil.NewLogger(logger).WithHeader(fmt.Sprintf("Lister/%s", dpService))
 
-func (m *ReplicaSetMonitor) OnReplicaSetCreated(kdLogger *kdutil.Logger, rs *appsv1.ReplicaSet) {
-	key := workload.KeyFromObject(rs)
-	kdLogger.Info("Created", "key", key)
-}
-
-func (m *ReplicaSetMonitor) OnReplicaSetDeleted(kdLogger *kdutil.Logger, rs *appsv1.ReplicaSet) {
-	key := workload.KeyFromObject(rs)
-	kdLogger.Info("Deleted", "key", key)
-	if exp, _ := m.expectations.Del(key); exp != nil {
-		if exp.Done() {
-			kdLogger.Info("Force done on deletion", "key", key)
+	return func(ctx context.Context) (addrs []string, err error) {
+		ctrlMgrs := &corev1.PodList{}
+		err = uncachedClient.List(ctx, ctrlMgrs,
+			client.InNamespace(metav1.NamespaceSystem),
+			client.MatchingLabels{"component": "kube-controller-manager"},
+		)
+		if err != nil {
+			kdLogger.Error(err, "Failed to list controller managers")
+			return
 		}
-	}
-}
-
-func (m *ReplicaSetMonitor) OnReplicaSetUpdated(kdLogger *kdutil.Logger, old, new *appsv1.ReplicaSet) {
-	key := workload.KeyFromObject(new)
-	exp, _ := m.expectations.Get(key)
-	if exp == nil {
-		kdLogger.V(1).DEBUG("No expectation, skipping", "key", key)
+		if len(ctrlMgrs.Items) == 0 {
+			kdLogger.WARN("No controller manager found, will retry later")
+			return
+		}
+		if len(ctrlMgrs.Items) > 1 {
+			kdLogger.WARN("Multiple controller managers found, will use the first available one")
+		}
+		for i := range ctrlMgrs.Items {
+			ctrlMgr := &ctrlMgrs.Items[i]
+			if !kdutil.IsPodReady(ctrlMgr) {
+				kdLogger.WARN(fmt.Sprintf("Controller manager %v is not ready", klog.KObj(ctrlMgr)))
+				continue
+			}
+			destIP := ctrlMgr.Status.PodIP
+			addrs = append(addrs, destIP+kdrpc.DeploymentServicePort)
+		}
 		return
 	}
-	if *new.Spec.Replicas == int32(exp.Desired()) {
-		if exp, _ := m.expectations.Del(key); exp != nil {
-			if exp.Done() {
-				kdLogger.Info("Expectation met", "key", key)
-			}
-		}
-	}
 }
 
-func (m *ReplicaSetMonitor) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	return ctrl.Result{}, nil
+func newDeploymentWatchRequest(client kdrpc.ClientInterface[kdproto.DeploymentClient], dp *appsv1.Deployment, replicas int) *kdproto.DeploymentWatchRequest {
+	return &kdproto.DeploymentWatchRequest{
+		Source: client.ID(),
+		Epoch:  client.Epoch(),
+		Target: &kdproto.NamespacedName{
+			Namespace: dp.Namespace,
+			Name:      dp.Name,
+		},
+		Replicas: int32(replicas),
+	}
 }
 
 func run(ctx context.Context, mgr manager.Manager, selector string, nPods int, fallback bool) {
-	monitor := NewReplicaSetMonitor(selector)
-	if err := monitor.SetupWithManager(ctx, mgr); err != nil {
-		klog.Fatalf("Error creating monitor: %v", err)
-	}
-
-	klog.Info("Starting manager")
-	go func() {
-		if err := mgr.Start(ctx); err != nil {
-			klog.Fatalf("Error running manager: %v", err)
-		}
-	}()
-
-	if !mgr.GetCache().WaitForCacheSync(ctx) {
-		klog.Fatalf("Cannot syncing manager cache")
-	}
-	mgrClient := mgr.GetClient()
+	uncachedClient := benchutil.NewUncachedClientOrDie(mgr)
 
 	targets := &appsv1.DeploymentList{}
 	listOpts := append(
 		[]client.ListOption{client.MatchingLabels{"workload": selector}},
 		workload.CtrlListOptions...,
 	)
-	if err := mgrClient.List(ctx, targets, listOpts...); err != nil {
-		klog.Fatalf("Error listing Deployments: %v", err)
+	if err := uncachedClient.List(ctx, targets, listOpts...); err != nil {
+		klog.Fatalf("Error listing scaling targets: %v", err)
 	}
 	if len(targets.Items) == 0 {
-		klog.Fatalf("No Deployment selected")
+		klog.Fatalf("No scaling targets selected")
+	}
+	for i := range targets.Items {
+		dp := &targets.Items[i]
+		if fallback != !kdutil.IsManaged(dp) {
+			klog.Fatal("Deployment must not be managed in fallback mode and vice versa")
+		}
 	}
 
 	waitForReplicaSets := func(ctx context.Context) (bool, error) {
 		rsList := &appsv1.ReplicaSetList{}
-		if err := mgrClient.List(ctx, rsList, listOpts...); err != nil {
+		if err := uncachedClient.List(ctx, rsList, listOpts...); err != nil {
 			klog.Fatalf("Error listing ReplicaSets: %v", err)
 		}
 		for i := range rsList.Items {
 			rs := &rsList.Items[i]
-			if fallback && kdutil.IsManaged(rs) {
-				klog.Fatalf("ReplicaSet %s/%s must not be managed in fallback mode", rs.Namespace, rs.Name)
-			}
 			if metav1.GetControllerOfNoCopy(rs) == nil {
 				klog.Fatalf("ReplicaSet %s/%s has no owner", rs.Namespace, rs.Name)
 			}
 		}
 		return len(rsList.Items) == len(targets.Items), nil
 	}
-	if err := wait.PollUntilContextCancel(ctx, 1*time.Second, false, waitForReplicaSets); err != nil {
+	if err := wait.PollUntilContextCancel(ctx, 5*time.Second, false, waitForReplicaSets); err != nil {
 		klog.Fatalf("Error waiting for ReplicaSets: %v", err)
 	}
 
 	// wait for rate limiter
-	<-time.After(60 * time.Second)
+	<-time.After(15 * time.Second)
 
 	nPodsPerTarget := nPods / len(targets.Items)
 	if nPodsPerTarget == 0 {
@@ -199,32 +147,77 @@ func run(ctx context.Context, mgr manager.Manager, selector string, nPods int, f
 		nPodsPerTarget = 1
 	}
 
-	wg := &sync.WaitGroup{}
-	wg.Add(len(targets.Items))
-	for i := range targets.Items {
-		target := &targets.Items[i]
-		monitor.Watch(wg, workload.KeyFromObject(target), nPodsPerTarget)
-	}
-	klog.Infof("Monitoring %d ReplicaSets", len(targets.Items))
+	klog.Info("Starting KD client")
+	dpServiceLister := newDeploymentServiceLister(ctx, uncachedClient)
+	kdClientHub := kdrpc.NewEventedClientHub(testClient, dpService, kdproto.NewDeploymentClient).
+		WithHandshake(doDeploymentHandshake).
+		WithDialOptions(dialTimeout, dialInterval).
+		WithAddrLister(dpServiceLister)
+	kdClientHub.Start(ctx)
+	defer kdClientHub.Stop()
 
-	klog.Infof("Scaling up %d targets, %d pods each", len(targets.Items), nPodsPerTarget)
-	start := time.Now()
-	errs := int32(0)
+	var kdClient kdrpc.ClientInterface[kdproto.DeploymentClient]
+	wait.PollUntilContextCancel(ctx, 1*time.Second, true, func(ctx context.Context) (bool, error) {
+		kdClient = kdClientHub.Unwrap()
+		if kdClient == nil {
+			return false, nil
+		}
+		return true, nil
+	})
+
+	klog.Infof("Watching %d Deployments, expecting %d pods each", len(targets.Items), nPodsPerTarget)
+	watchGroup := &sync.WaitGroup{}
+	watchGroup.Add(len(targets.Items))
+	nFinished := int32(0)
 	for i := range targets.Items {
-		target := &targets.Items[i]
+		dp := &targets.Items[i]
 		go func() {
-			desiredScale := &autoscalingv1.Scale{Spec: autoscalingv1.ScaleSpec{Replicas: int32(nPodsPerTarget)}}
-			if err := mgrClient.SubResource("scale").Update(ctx, target, client.WithSubResourceBody(desiredScale)); err != nil {
-				klog.ErrorS(err, "Error scaling up", "target", klog.KObj(target))
-				atomic.AddInt32(&errs, 1)
-				// os.Exit(1)
+			defer watchGroup.Done()
+			if _, err := kdClient.Client().Watch(ctx, newDeploymentWatchRequest(kdClient, dp, nPodsPerTarget)); err != nil {
+				klog.ErrorS(err, "Error watching Deployment", "target", klog.KObj(dp))
+			} else {
+				atomic.AddInt32(&nFinished, 1)
 			}
 		}()
 	}
-	klog.InfoS("All targets scaled up, waiting for expectations", "elapsed", time.Since(start))
-	wg.Wait()
-	klog.Info("Done")
 
-	nErrs := int(atomic.LoadInt32(&errs))
-	fmt.Printf("total: %v us (%d/%d)\n", time.Since(start).Microseconds(), len(targets.Items)-nErrs, len(targets.Items))
+	klog.Infof("Scaling up %d targets, %d pods each", len(targets.Items), nPodsPerTarget)
+	scaleGroup := &sync.WaitGroup{}
+	scaleGroup.Add(len(targets.Items))
+	nScaled := int32(0)
+	start := time.Now()
+	for i := range targets.Items {
+		target := &targets.Items[i]
+		go func() {
+			defer scaleGroup.Done()
+			desiredScale := &autoscalingv1.Scale{Spec: autoscalingv1.ScaleSpec{Replicas: int32(nPodsPerTarget)}}
+			if err := uncachedClient.SubResource("scale").Update(ctx, target, client.WithSubResourceBody(desiredScale)); err != nil {
+				klog.ErrorS(err, "Error scaling up", "target", klog.KObj(target))
+			} else {
+				atomic.AddInt32(&nScaled, 1)
+			}
+		}()
+	}
+
+	// wait for scaling process
+	scaleGroup.Wait()
+	select {
+	case <-ctx.Done():
+		klog.Info("Context cancelled")
+		return
+	default:
+	}
+	fmt.Printf("Targets scaled %d/%d in %v\n", atomic.LoadInt32(&nScaled), len(targets.Items), time.Since(start))
+
+	// wait for watchers
+	watchGroup.Wait()
+	select {
+	case <-ctx.Done():
+		klog.Info("Context cancelled")
+		return
+	default:
+	}
+	fmt.Printf("RPC returned %d/%d in %v\n", atomic.LoadInt32(&nFinished), len(targets.Items), time.Since(start))
+
+	fmt.Printf("total: %v us\n", time.Since(start).Microseconds())
 }

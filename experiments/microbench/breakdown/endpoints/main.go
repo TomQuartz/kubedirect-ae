@@ -30,9 +30,9 @@ func init() {
 	klog.InitFlags(nil)
 }
 
-// NOTE: use ReplicaSet
-// k8s: no managed label, vary nPods and/or # ReplicaSets
-// kd: mark managed, vary nPods and/or # ReplicaSets
+// NOTE: use ReplicaSet + Service
+// k8s: both not managed, vary nPods and/or # ReplicaSets
+// kd: both managed, vary nPods and/or # ReplicaSets
 func main() {
 	var baseline string
 	var selector string

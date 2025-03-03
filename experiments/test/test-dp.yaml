@@ -6,7 +6,6 @@ metadata:
     app: test
     workload: test
     kubedirect/managed: "true"
-    # kubedirect/fallback: "scaling"
 spec:
   replicas: 0
   selector:
@@ -17,9 +16,6 @@ spec:
       labels:
         app: test
         workload: test
-        # NOTE: no need to set managed label for replicated pods
-        # kubedirect/fallback: "binding"
-        # kubedirect/pod-lifecycle: "custom"
     spec:
       automountServiceAccountToken: false
       tolerations:
@@ -31,20 +27,3 @@ spec:
         image: alpine:3.21
         command: [ "/bin/sh", "-c", "--" ]
         args: [ "trap exit TERM INT; sleep infinity & wait" ]
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: test
-  labels:
-    app: test
-    kind: workload
-spec:
-  selector:
-    app: test
-  ports:
-    - name: h2c
-      protocol: TCP
-      port: 80
-      targetPort: 80
-  type: ClusterIP

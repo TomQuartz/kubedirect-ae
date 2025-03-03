@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"os"
 	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -17,6 +16,7 @@ import (
 
 	// Kubedirect
 	benchutil "github.com/tomquartz/kubedirect-bench/pkg/util"
+	kdctx "k8s.io/kubedirect/pkg/context"
 	kdrpc "k8s.io/kubedirect/pkg/rpc"
 	kdproto "k8s.io/kubedirect/pkg/rpc/proto"
 	kdutil "k8s.io/kubedirect/pkg/util"
@@ -88,23 +88,6 @@ func newSchedulerLister(ctx context.Context, uncachedClient client.Client) func(
 func run(ctx context.Context, mgr manager.Manager, target string, nPods int, fallback bool) {
 	uncachedClient := benchutil.NewUncachedClientOrDie(mgr)
 
-	klog.Info("Starting KD client")
-	schedulerLister := newSchedulerLister(ctx, uncachedClient)
-	kdClientHub := kdrpc.NewEventedClientHub(testClient, schedService, kdproto.NewSchedulerClient).
-		WithHandshake(doSchedulerHandshake).
-		WithDialOptions(dialTimeout, dialInterval).
-		WithAddrLister(schedulerLister)
-	kdClientHub.Start(ctx)
-
-	var kdClient kdrpc.ClientInterface[kdproto.SchedulerClient]
-	wait.PollUntilContextCancel(ctx, 1*time.Second, true, func(ctx context.Context) (bool, error) {
-		kdClient = kdClientHub.Unwrap()
-		if kdClient == nil {
-			return false, nil
-		}
-		return true, nil
-	})
-
 	templatePod := &corev1.Pod{}
 	templatePodKey := client.ObjectKey{
 		Namespace: metav1.NamespaceDefault,
@@ -121,7 +104,7 @@ func run(ctx context.Context, mgr manager.Manager, target string, nPods int, fal
 		klog.Fatalf("Invalid owner label, expected %s, got %s", target, owner)
 	}
 	if fallback != kdutil.IsFallbackBinding(templatePod) {
-		klog.Fatalf("Invalid template pod: missing fallback binding label")
+		klog.Fatalf("Invalid template pod: should set fallback binding label if and only if in fallback mode")
 	}
 
 	fakeReplicaSet := &appsv1.ReplicaSet{
@@ -131,17 +114,35 @@ func run(ctx context.Context, mgr manager.Manager, target string, nPods int, fal
 		},
 	}
 
+	klog.Info("Starting KD client")
+	schedulerLister := newSchedulerLister(ctx, uncachedClient)
+	kdClientHub := kdrpc.NewEventedClientHub(testClient, schedService, kdproto.NewSchedulerClient).
+		WithHandshake(doSchedulerHandshake).
+		WithDialOptions(dialTimeout, dialInterval).
+		WithAddrLister(schedulerLister)
+	kdClientHub.Start(ctx)
+	defer kdClientHub.Stop()
+
+	var kdClient kdrpc.ClientInterface[kdproto.SchedulerClient]
+	wait.PollUntilContextCancel(ctx, 1*time.Second, true, func(ctx context.Context) (bool, error) {
+		kdClient = kdClientHub.Unwrap()
+		if kdClient == nil {
+			return false, nil
+		}
+		return true, nil
+	})
+
 	// IMPORTANT: use blocking request
-	req := kdrpc.NewPodSchedulingRequest(kdClient, fakeReplicaSet, nPods)
+	req := kdctx.NewPodSchedulingRequest(kdClient, fakeReplicaSet, nPods)
 	req.Blocking = true
 
 	klog.Infof("Scheduling %d pods", nPods)
 	start := time.Now()
 	if _, err := kdClient.Client().SchedulePods(ctx, req); err != nil {
 		klog.ErrorS(err, "Error scheduling pods", "target", klog.KObj(fakeReplicaSet))
-		os.Exit(1)
+		return
 	}
-	klog.Info("Done")
+	fmt.Printf("RPC returned in %v\n", time.Since(start))
 
 	fmt.Printf("total: %v us\n", time.Since(start).Microseconds())
 }

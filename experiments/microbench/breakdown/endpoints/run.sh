@@ -5,11 +5,11 @@ cd $BASE_DIR
 
 set -x
 
-USAGE="run.sh k8s|kd #deployments [#pods]"
+USAGE="run.sh k8s|kd #replicasets [#pods]"
 # NOTE: if using kwok, then caller should setup custom kubelet service with --simulate flag + kwok node delegation
 # NOTE: must also export LIFECYCLE=custom env var
 
-export WORKLOAD=${WORKLOAD:-"test-autoscaler"}
+export WORKLOAD=${WORKLOAD:-"test-endpoints"}
 # export IMAGE=${IMAGE:-"gcr.io/google-samples/kubernetes-bootcamp:v1"}
 
 baseline=$1
@@ -26,7 +26,7 @@ case $baseline in
 esac
 shift
 
-n_deployments=$1
+n_replicasets=$1
 if ! [[ -n "$1" && "$1" =~ ^[0-9]*$ ]]; then
     echo "Usage: $USAGE"
     exit 1
@@ -39,11 +39,12 @@ if ! [[ "$n_pods" =~ ^[0-9]*$ ]]; then
     exit 1
 fi
 
-echo "Running autoscaler breakdown experiment: baseline=$baseline, selector=$WORKLOAD, #deployments=$n_deployments, #pods=$n_pods"
+echo "Running endpoints breakdown experiment: baseline=$baseline, selector=$WORKLOAD, #replicasets=$n_replicasets, #pods=$n_pods"
 
-for ((i = 0; i < n_deployments; i++)); do
+for ((i = 0; i < n_replicasets; i++)); do
     export NAME="$WORKLOAD-$i"
-    cat config/deployment.template.yaml | envsubst | kubectl apply -f -
+    cat config/replicaset.template.yaml | envsubst | kubectl apply -f -
+    cat config/service.template.yaml | envsubst | kubectl apply -f -
 done
 
 # read -p "Press enter to continue..."
@@ -54,4 +55,5 @@ go run . -baseline $baseline -selector $WORKLOAD -n $n_pods >result.log 2>stderr
 # cleanup
 # read -p "Press enter to continue..."
 sleep 30
-kubectl delete deployment -l workload=$WORKLOAD
+kubectl delete replicaset -l workload=$WORKLOAD
+kubectl delete service -l workload=$WORKLOAD

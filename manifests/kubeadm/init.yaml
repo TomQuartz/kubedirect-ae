@@ -39,6 +39,8 @@ apiServer:
     value: "200000"
   - name: max-requests-inflight
     value: "200000"
+  - name: feature-gates
+    value: AuthorizeNodeWithSelectors=false
   - name: v
     value: "0"
 scheduler:
@@ -188,8 +190,7 @@ streamingConnectionIdleTimeout: 0s
 syncFrequency: 0s
 volumeStatsAggPeriod: 0s
 featureGates:
-  # EventedPLEG: true
-  SidecarContainers: false
+  EventedPLEG: true
 kubeAPIQPS: 200
 kubeAPIBurst: 400
 serializeImagePulls: false

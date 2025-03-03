@@ -31,15 +31,15 @@ function run_kubeadm {
         sudo cp $MANIFESTS_DIR/kubeadm/kube-scheduler-config.large.yaml /etc/kubernetes/manifests/
     fi
 
-    # ensure ports
-    critical_ports=("6443" "2379" "2380" "10250" "10251" "10252" "10256" "10257" "4443")
-    for port in ${critical_ports[@]} ; do
-        pid=$(sudo lsof -t -i :$port) || continue
-        if [ -n "$pid" ]; then
-            echo "port $port is in use by $pid"
-            sudo kill -9 $pid
-        fi
-    done
+    # # ensure ports
+    # critical_ports=("6443" "2379" "2380" "10250" "10251" "10252" "10256" "10257" "4443")
+    # for port in ${critical_ports[@]} ; do
+    #     pid=$(sudo lsof -t -i :$port) || continue
+    #     if [ -n "$pid" ]; then
+    #         echo "port $port is in use by $pid"
+    #         sudo kill -9 $pid
+    #     fi
+    # done
 
     # kubeadm init
     master_ip=$(ip -4 addr show | grep -oP 'inet 10\.\S+' | awk '{print $2}' | cut -d/ -f1)

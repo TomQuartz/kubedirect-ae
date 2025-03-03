@@ -50,6 +50,13 @@ cmd="./run.sh \$baseline \$n_funcs \$((n_funcs * n_pods_per_func))"
 run_cmd _as "$cmd" k8s kd
 
 ###################### breakdown: replicaset ######################
+# NOTE: we include replicaset in function scalability
+# because the rs controller may parallel the reconciliation of multiple replicasets
 cd $BASE_DIR/breakdown/replicaset
 cmd="./run.sh \$baseline \$n_funcs \$((n_funcs * n_pods_per_func))"
 run_cmd _rs "$cmd" k8s kd
+
+###################### breakdown: endpoints ######################
+cd $BASE_DIR/breakdown/endpoints
+cmd="./run.sh \$baseline \$n_funcs \$((n_funcs * n_pods_per_func))"
+run_cmd _ep "$cmd" k8s kd

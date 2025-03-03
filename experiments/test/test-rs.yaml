@@ -1,29 +1,29 @@
 apiVersion: apps/v1
 kind: ReplicaSet
 metadata:
-  name: ${NAME}
+  name: test
   labels:
-    app: ${NAME}
-    workload: ${WORKLOAD}
-    kubedirect/managed: "${MANAGED}"
-    kubedirect/fallback-scaling: "${FALLBACK}"
+    app: test
+    workload: test
+    kubedirect/managed: "true"
+    kubedirect/fallback-scaling: "true"
 spec:
   replicas: 0
   selector:
     matchLabels:
-      app: ${NAME}
-      workload: ${WORKLOAD}
+      app: test
+      workload: test
   template:
     metadata:
       labels:
-        app: ${NAME}
-        workload: ${WORKLOAD}
+        app: test
+        workload: test
         kubedirect/pod-lifecycle: "${LIFECYCLE}"
     spec:
       automountServiceAccountToken: false
       terminationGracePeriodSeconds: 5
       containers:
-      - name: ${NAME}
+      - name: test
         image: alpine:3.21
         command: [ "/bin/sh", "-c", "--" ]
         args: [ "trap exit TERM INT; sleep infinity & wait" ]

@@ -15,6 +15,10 @@ export WORKLOAD=${WORKLOAD:-"test-replicaset"}
 baseline=$1
 case $baseline in
     k8s)
+        # NOTE: k8s rs also needs to be managed for it to receive the rpc scaling calls
+        # but we also use the fallback label to explicit create pods
+        export MANAGED="true"
+        export FALLBACK="true"
         ;;
     kd)
         export MANAGED="true"
@@ -52,5 +56,6 @@ sleep 30
 go run . -baseline $baseline -selector $WORKLOAD -n $n_pods >result.log 2>stderr.log
 
 # cleanup
+# read -p "Press enter to continue..."
 sleep 30
 kubectl delete replicaset -l workload=$WORKLOAD

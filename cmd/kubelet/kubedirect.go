@@ -48,7 +48,7 @@ func (s *KubedirectServer) DelClient(nodeName string) {
 }
 
 // impl kdproto.KubeletServer
-func (s *KubedirectServer) Handshake(ctx context.Context, req *kdproto.HandshakeRequest) (*kdproto.NodeInfo, error) {
+func (s *KubedirectServer) Handshake(ctx context.Context, req *kdproto.HandshakeRequest) (*kdproto.KubeletHandshakeResponse, error) {
 	kdLogger := kdutil.NewLogger(klog.FromContext(ctx)).WithHeader(req.Source + "->Handshake")
 	kdLogger.Info(fmt.Sprintf("New epoch from %s to %s: %s", req.Source, req.Destination, req.Epoch))
 	s.clientPool.GetOrCreate(req.Destination, func() clientset.Interface {
@@ -56,7 +56,7 @@ func (s *KubedirectServer) Handshake(ctx context.Context, req *kdproto.Handshake
 	})
 	holder := s.serverHub.Lock(req.Source, req.Epoch)
 	defer holder.Unlock()
-	msg := &kdproto.NodeInfo{
+	msg := &kdproto.KubeletHandshakeResponse{
 		Epoch: req.Epoch,
 		Name:  req.Destination,
 		Pods:  s.inMemCache.AsPodInfosProtoOnNode(req.Destination),
@@ -75,8 +75,7 @@ func (s *KubedirectServer) BindPod(ctx context.Context, req *kdproto.PodBindingR
 	// notify the the sender to let it decide whether to retry
 	if err != nil {
 		return nil, grpcstatus.Errorf(grpccodes.NotFound,
-			"%s: error getting template pod for %s/%s: %v",
-			kdrpc.NoTemplatePodError, req.PodInfo.Owner.Namespace, req.PodInfo.Owner.Name, err,
+			"error getting template pod for %s/%s: %v", req.PodInfo.Owner.Namespace, req.PodInfo.Owner.Name, err,
 		)
 	}
 	podInfo := kdctx.NewPodInfoFromBindingRequest(req)

@@ -44,7 +44,7 @@ function run_kind {
 EOF
     done
 
-    kind create cluster --name $CLUSTER_NAME --config $MANIFESTS_DIR/kind/_tmp_.$KIND_CONFIG
+    kind create cluster --name $CLUSTER_NAME --config $MANIFESTS_DIR/kind/_tmp_.$KIND_CONFIG --verbosity 6
     kubectl cluster-info --context kind-$CLUSTER_NAME
 
     # install metrics-server

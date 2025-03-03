@@ -170,12 +170,12 @@ func run(ctx context.Context, mgr manager.Manager, selector string, nPods int) {
 		}
 		return len(rsList.Items) == len(targets.Items), nil
 	}
-	if err := wait.PollUntilContextCancel(ctx, 1*time.Second, false, waitForReplicaSets); err != nil {
+	if err := wait.PollUntilContextCancel(ctx, 5*time.Second, false, waitForReplicaSets); err != nil {
 		klog.Fatalf("Error waiting for ReplicaSets: %v", err)
 	}
 
 	// wait for rate limiter
-	<-time.After(60 * time.Second)
+	<-time.After(15 * time.Second)
 
 	nPodsPerTarget := nPods / len(targets.Items)
 	if nPodsPerTarget == 0 {
@@ -192,22 +192,27 @@ func run(ctx context.Context, mgr manager.Manager, selector string, nPods int) {
 	}
 
 	klog.Infof("Scaling up %d targets, %d pods each", len(targets.Items), nPodsPerTarget)
+	nScaled := int32(0)
 	start := time.Now()
-	errs := int32(0)
 	for i := range targets.Items {
 		target := &targets.Items[i]
 		go func() {
 			desiredScale := &autoscalingv1.Scale{Spec: autoscalingv1.ScaleSpec{Replicas: int32(nPodsPerTarget)}}
 			if err := mgrClient.SubResource("scale").Update(ctx, target, client.WithSubResourceBody(desiredScale)); err != nil {
 				klog.ErrorS(err, "Error scaling up", "target", klog.KObj(target))
-				atomic.AddInt32(&errs, 1)
-				// os.Exit(1)
+			} else {
+				atomic.AddInt32(&nScaled, 1)
 			}
 		}()
 	}
 	wg.Wait()
-	klog.Info("Done")
+	select {
+	case <-ctx.Done():
+		klog.Info("Context cancelled")
+		return
+	default:
+	}
+	fmt.Printf("Targets scaled %d/%d in %v\n", atomic.LoadInt32(&nScaled), len(targets.Items), time.Since(start))
 
-	nErrs := int(atomic.LoadInt32(&errs))
-	fmt.Printf("total: %v us (%d/%d)\n", time.Since(start).Microseconds(), len(targets.Items)-nErrs, len(targets.Items))
+	fmt.Printf("total: %v us\n", time.Since(start).Microseconds())
 }

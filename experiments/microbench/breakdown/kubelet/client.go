@@ -123,23 +123,6 @@ func run(ctx context.Context, mgr manager.Manager, nodeName string, target strin
 	}
 	mgrClient := mgr.GetClient()
 
-	klog.Info("Starting KD client")
-	kubeletLister := newKubeletLister(ctx, mgrClient, nodeName, !useDefaultKubelet)
-	kdClientHub := kdrpc.NewEventedClientHub(kdClientKeyFunc(nodeName), nodeName, kdproto.NewKubeletClient).
-		WithHandshake(doKubeletHandshake).
-		WithDialOptions(dialTimeout, dialInterval).
-		WithAddrLister(kubeletLister)
-	kdClientHub.Start(ctx)
-
-	var kdClient kdrpc.ClientInterface[kdproto.KubeletClient]
-	wait.PollUntilContextCancel(ctx, 1*time.Second, true, func(ctx context.Context) (bool, error) {
-		kdClient = kdClientHub.Unwrap()
-		if kdClient == nil {
-			return false, nil
-		}
-		return true, nil
-	})
-
 	templatePod := &corev1.Pod{}
 	templatePodKey := client.ObjectKey{
 		Namespace: metav1.NamespaceDefault,
@@ -159,6 +142,24 @@ func run(ctx context.Context, mgr manager.Manager, nodeName string, target strin
 		klog.Fatalf("Invalid template pod: pod-lifecycle label does not match kubelet implementation")
 	}
 
+	klog.Info("Starting KD client")
+	kubeletLister := newKubeletLister(ctx, mgrClient, nodeName, !useDefaultKubelet)
+	kdClientHub := kdrpc.NewEventedClientHub(kdClientKeyFunc(nodeName), nodeName, kdproto.NewKubeletClient).
+		WithHandshake(doKubeletHandshake).
+		WithDialOptions(dialTimeout, dialInterval).
+		WithAddrLister(kubeletLister)
+	kdClientHub.Start(ctx)
+	defer kdClientHub.Stop()
+
+	var kdClient kdrpc.ClientInterface[kdproto.KubeletClient]
+	wait.PollUntilContextCancel(ctx, 1*time.Second, true, func(ctx context.Context) (bool, error) {
+		kdClient = kdClientHub.Unwrap()
+		if kdClient == nil {
+			return false, nil
+		}
+		return true, nil
+	})
+
 	podInfos := newPodInfos(templatePod.Namespace, target, nodeName, nPods)
 	reqs := newBindingRequests(kdClient, podInfos)
 
@@ -166,21 +167,26 @@ func run(ctx context.Context, mgr manager.Manager, nodeName string, target strin
 	wg.Add(len(reqs))
 	monitor.Watch(wg, podInfos)
 
-	klog.Infof("Instantiating %d pods on %s", nPods, nodeName)
+	klog.Infof("Binding %d pods to %s", nPods, nodeName)
+	nBound := int32(0)
 	start := time.Now()
-	errs := int32(0)
 	for i := range reqs {
 		go func(i int) {
 			if _, err := kdClient.Client().BindPod(ctx, reqs[i]); err != nil {
 				klog.ErrorS(err, "Error binding pod", "pod", podInfos[i])
-				atomic.AddInt32(&errs, 1)
-				// os.Exit(1)
+			} else {
+				atomic.AddInt32(&nBound, 1)
 			}
 		}(i)
 	}
 	wg.Wait()
-	klog.Info("Done")
+	select {
+	case <-ctx.Done():
+		klog.Info("Context cancelled")
+		return
+	default:
+	}
+	fmt.Printf("RPC returned %d/%d in %v\n", atomic.LoadInt32(&nBound), nPods, time.Since(start))
 
-	nErrs := int(atomic.LoadInt32(&errs))
-	fmt.Printf("total: %v us (%d/%d)\n", time.Since(start).Microseconds(), len(reqs)-nErrs, len(reqs))
+	fmt.Printf("total: %v us\n", time.Since(start).Microseconds())
 }

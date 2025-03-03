@@ -1,5 +1,8 @@
 kind: Cluster
 apiVersion: kind.x-k8s.io/v1alpha4
+featureGates:
+  AuthorizeNodeWithSelectors: false
+  TopologyAwareHints: false
 nodes:
 - role: control-plane
   image: shengqipku/kind-node:v1.32.0-kubedirect
@@ -20,6 +23,7 @@ nodes:
           auto-compaction-mode: "periodic"
     apiServer:
       extraArgs:
+        feature-gates: "AnonymousAuthConfigurableEndpoints=false"
         max-requests-inflight: "200000"
         max-mutating-requests-inflight: "200000"
         v: "0"
@@ -28,7 +32,6 @@ nodes:
         v: "0"
     controllerManager:
       extraArgs:
-        feature-gates: "TopologyAwareHints=false"
         concurrent-deployment-syncs: "100"
         concurrent-replicaset-syncs: "100"
         concurrent-endpoint-syncs: "50"

@@ -45,6 +45,11 @@ custom_kubelet_up # watch
 run_cmd e2e "$cmd" k8s+ kd+
 custom_kubelet_down
 
+###################### breakdown: autoscaler ######################
+cd $BASE_DIR/breakdown/autoscaler
+cmd="./run.sh \$baseline 1 \$n_pods"
+run_cmd _as "$cmd" k8s kd
+
 ###################### breakdown: replicaset ######################
 cd $BASE_DIR/breakdown/replicaset
 cmd="./run.sh \$baseline 1 \$n_pods"
@@ -68,3 +73,6 @@ run_cmd _runtime "$cmd" custom
 custom_kubelet_down
 
 ###################### breakdown: endpoints ######################
+cd $BASE_DIR/breakdown/endpoints
+cmd="./run.sh \$baseline 1 \$n_pods"
+run_cmd _ep "$cmd" k8s kd

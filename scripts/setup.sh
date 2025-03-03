@@ -68,10 +68,16 @@ function setup_install {
     $BASE_DIR/build.sh kubelet
 }
 
+function setup_tmux {
+    echo "set -g mouse on" > ~/.tmux.conf
+    tmux source ~/.tmux.conf
+}
+
 function setup_all {
     setup_ssh
     setup_scripts
     setup_install
+    setup_tmux
 }
 
 function setup_reboot {

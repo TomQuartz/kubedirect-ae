@@ -6,7 +6,6 @@ metadata:
     app: test
     workload: test
     kubedirect/managed: "true"
-    # kubedirect/fallback: "scaling"
 spec:
   replicas: 0
   selector:
@@ -17,8 +16,6 @@ spec:
       labels:
         app: test
         workload: test
-        # NOTE: no need to set managed label for replicated pods
-        # kubedirect/fallback: "binding"
         kubedirect/pod-lifecycle: "custom"
     spec:
       automountServiceAccountToken: false

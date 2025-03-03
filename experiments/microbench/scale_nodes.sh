@@ -43,12 +43,6 @@ cmd="./run.sh \$baseline 1 \$((n_nodes * n_pods_per_node))"
 # use custom kubelet for kd+
 run_cmd_with_nodes $n_nodes e2e "$cmd" kd+
 
-# ###################### breakdown: replicaset ######################
-# cd $BASE_DIR/breakdown/replicaset
-# cmd="./run.sh \$baseline 1 \$((n_nodes * n_pods_per_node))"
-# # NOTE: must pass LIFECYCLE=custom because we are using kwok nodes
-# LIFECYCLE=custom run_cmd_with_nodes $n_nodes _rs "$cmd" kd
-
 ###################### breakdown: scheduler ######################
 cd $BASE_DIR/breakdown/scheduler
 cmd="./run.sh \$baseline \$((n_nodes * n_pods_per_node))"
@@ -56,12 +50,12 @@ cmd="./run.sh \$baseline \$((n_nodes * n_pods_per_node))"
 LIFECYCLE=custom run_cmd_with_nodes $n_nodes _sched "$cmd" kd
 
 ###################### breakdown: kubelet ######################
+# NOTE: we include kubelet in node scalability
+# because increasing the number of kubelets increases the load on the api server
 cd $BASE_DIR/breakdown/kubelet
 cmd="./run.sh \$baseline \$n_pods_per_node"
 # use custom kubelet
 run_cmd_with_nodes $n_nodes _runtime "$cmd" custom
-
-###################### breakdown: endpoints ######################
 
 }
 

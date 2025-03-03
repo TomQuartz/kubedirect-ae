@@ -1,7 +1,7 @@
 BASE_DIR=$PWD
 ROOT_DIR=$BASE_DIR/../..
 
-# usage: kubeadm_up [large] [#workers]
+# usage: kubeadm_up [large]
 function kubeadm_up {
     # loop until kubeadm is up
     while true; do

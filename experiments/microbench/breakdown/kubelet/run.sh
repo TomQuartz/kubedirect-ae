@@ -62,6 +62,7 @@ sleep 30
 go run . -baseline $baseline -target $WORKLOAD -node $node -n $n_pods >result.log 2>stderr.log
 
 # cleanup
+# read -p "Press enter to continue..."
 sleep 30
 # cat config/template-pod.yaml | envsubst | kubectl delete -f -
 kubectl delete pods -l kubedirect/owner-name=$WORKLOAD
