@@ -42,7 +42,7 @@ function run_kubeadm {
     # done
 
     # kubeadm init
-    master_ip=$(ip -4 addr show | grep -oP 'inet 10\.\S+' | awk '{print $2}' | cut -d/ -f1)
+    master_ip=$(grep -w $(hostname) /etc/hosts | awk '{print $1}')
     MASTER_IP=$master_ip envsubst < $MANIFESTS_DIR/kubeadm/$INIT_CONFIG > $MANIFESTS_DIR/kubeadm/_tmp_.$INIT_CONFIG
     sudo kubeadm init --config $MANIFESTS_DIR/kubeadm/_tmp_.$INIT_CONFIG 2>&1 | tee $ROOT_DIR/init.log
 

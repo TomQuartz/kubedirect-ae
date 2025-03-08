@@ -17,7 +17,7 @@ Host $host
     Hostname $addr
     User $USER
     StrictHostKeyChecking no
-
+    UserKnownHostsFile /dev/null
 EOF
     done
 
