@@ -189,8 +189,8 @@ staticPodPath: /etc/kubernetes/manifests
 streamingConnectionIdleTimeout: 0s
 syncFrequency: 0s
 volumeStatsAggPeriod: 0s
-featureGates:
-  EventedPLEG: true
+# featureGates:
+#   EventedPLEG: true
 kubeAPIQPS: 200
 kubeAPIBurst: 400
 serializeImagePulls: false
