@@ -12,7 +12,7 @@ RUN=${1:-"test"}
 # NOTE: we only test the scalability of kd+ using custom kubelet and kwok nodes
 # usage: scale_nodes.sh $RUN
 
-setup_dirs scale-nodes || exit 0
+setup_dirs scale-nodes
 
 N_NODES=(500 1000 1500 2000)
 # N_NODES=(100)
@@ -25,9 +25,14 @@ function run_cmd_with_nodes {
     cmd=$3
     shift 3
     for baseline in $@; do
+        out=$name.$baseline.$n_nodes
+        if [ -s "$RESULTS/$out.log" ]; then
+            echo "found result for $out in $RESULTS, skipping"
+            continue
+        fi
         eval "$cmd"
-        cp ./result.log $RESULTS/$name.$baseline.$n_nodes.log
-        cp ./stderr.log $RESULTS/stderr/$name.$baseline.$n_nodes.log
+        cp ./result.log $RESULTS/$out.log
+        cp ./stderr.log $RESULTS/stderr/$out.log
         sleep 120
     done
 }

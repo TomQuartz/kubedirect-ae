@@ -11,7 +11,7 @@ RUN=${1:-"test"}
 # NOTE: assume k8s is up and running
 # usage: scale_funcs.sh $RUN
 
-setup_dirs scale-funcs || exit 0
+setup_dirs scale-funcs
 
 N_FUNCS=(100 200 300 600)
 # N_FUNCS=(40)
@@ -24,9 +24,14 @@ function run_cmd {
     shift 2
     for baseline in $@; do
         for n_funcs in ${N_FUNCS[@]}; do
+            out=$name.$baseline.$n_funcs
+            if [ -s "$RESULTS/$out.log" ]; then
+                echo "found result for $out in $RESULTS, skipping"
+                continue
+            fi
             eval "$cmd"
-            cp ./result.log $RESULTS/$name.$baseline.$n_funcs.log
-            cp ./stderr.log $RESULTS/stderr/$name.$baseline.$n_funcs.log
+            cp ./result.log $RESULTS/$out.log
+            cp ./stderr.log $RESULTS/stderr/$out.log
             sleep 30
         done
     done

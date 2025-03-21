@@ -6,7 +6,7 @@ function setup_dirs {
     RESULTS=$BASE_DIR/results/$1/$RUN
 
     if [ -d "$RESULTS" ]; then
-        echo "Already finished experiment $1/$RUN"
+        echo "WARNING: $1/$RUN already exists"
         return 1
     else
         mkdir -p $RESULTS

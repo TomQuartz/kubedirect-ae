@@ -181,6 +181,9 @@ func run(ctx context.Context, mgr manager.Manager, selector string, nPods int, f
 		}()
 	}
 
+	// must wait till all watch callbacks are installed
+	time.Sleep(30 * time.Second)
+
 	klog.Infof("Scaling up %d targets, %d pods each", len(targets.Items), nPodsPerTarget)
 	scaleGroup := &sync.WaitGroup{}
 	scaleGroup.Add(len(targets.Items))

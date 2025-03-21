@@ -205,6 +205,9 @@ func run(ctx context.Context, mgr manager.Manager, selector string, nPods int, f
 		}()
 	}
 
+	// must wait till all watch callbacks are installed
+	time.Sleep(30 * time.Second)
+
 	klog.Infof("Populating Endpoints for %d Services, %d pods each", len(services.Items), nPodsPerTarget)
 	updateGroup := &sync.WaitGroup{}
 	updateGroup.Add(len(services.Items))
