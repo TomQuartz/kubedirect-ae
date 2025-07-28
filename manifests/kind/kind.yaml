@@ -23,7 +23,6 @@ nodes:
           auto-compaction-mode: "periodic"
     apiServer:
       extraArgs:
-        feature-gates: "AnonymousAuthConfigurableEndpoints=false"
         max-requests-inflight: "200000"
         max-mutating-requests-inflight: "200000"
         v: "0"
