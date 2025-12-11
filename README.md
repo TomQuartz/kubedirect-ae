@@ -24,7 +24,7 @@ If you wish to set up your own cluster, please refer to the [CloudLab manual](ht
 After setting up the cluster, clone the repository with
 
 ```bash
-git clone --recursive -b nsdi-ae https://github.com/TomQuartz/kubedirect.git
+git clone --recursive https://github.com/TomQuartz/kubedirect-ae.git
 ```
 
 then run 
