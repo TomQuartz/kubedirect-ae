@@ -13,7 +13,7 @@ RUN=${1:-"test"}
 
 setup_dirs scale-pods
 
-N_PODS=(100 150 200 250)
+N_PODS=(100 150 200)
 n_nodes=20
 # N_PODS=(40)
 # n_nodes=2
@@ -50,15 +50,15 @@ custom_kubelet_up # watch
 run_cmd e2e "$cmd" k8s+ kd+
 custom_kubelet_down
 
-###################### breakdown: autoscaler ######################
-cd $BASE_DIR/breakdown/autoscaler
-cmd="./run.sh \$baseline 1 \$n_pods"
-run_cmd _as "$cmd" k8s kd
+# ###################### breakdown: autoscaler ######################
+# cd $BASE_DIR/breakdown/autoscaler
+# cmd="./run.sh \$baseline 1 \$n_pods"
+# run_cmd _as "$cmd" k8s kd
 
-###################### breakdown: deployment ######################
-cd $BASE_DIR/breakdown/deployment
-cmd="./run.sh \$baseline 1 \$n_pods"
-run_cmd _dp "$cmd" k8s kd
+# ###################### breakdown: deployment ######################
+# cd $BASE_DIR/breakdown/deployment
+# cmd="./run.sh \$baseline 1 \$n_pods"
+# run_cmd _dp "$cmd" k8s kd
 
 ###################### breakdown: replicaset ######################
 cd $BASE_DIR/breakdown/replicaset
