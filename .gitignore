@@ -2,6 +2,7 @@
 _tmp_*
 *.bak
 *.log
+*.lock
 /log
 /watch
 

@@ -3,6 +3,7 @@
 BASE_DIR=`realpath $(dirname $0)`
 cd $BASE_DIR
 . util.sh
+lock
 
 set -x
 

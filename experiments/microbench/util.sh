@@ -1,6 +1,15 @@
 BASE_DIR=`realpath $(dirname $0)`
 ROOT_DIR=$BASE_DIR/../..
 
+function lock {
+    local lockfd=${1:-"2026"}
+    eval "exec $lockfd>$ROOT_DIR/run.lock"
+    flock -n $lockfd || {
+        echo "Another instance is running. Please wait for it to finish."
+        exit 1
+    }
+}
+
 function setup_dirs {
     RUN=${RUN:-"test"}
     RESULTS=$BASE_DIR/results/$1/$RUN

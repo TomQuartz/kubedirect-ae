@@ -61,6 +61,7 @@ Each run of `all.sh` should take 15--20 minutes to complete.
 `experiments/trace` corresponds to Figure 12--13 of the paper. Like the microbenchmarks, we provide an all-in-one script `all.sh` to run the entire trace suite. Inside the directory, run
 
 ```bash
+./download.sh # if ./data folder is not present
 ./all.sh ${ID}
 ```
 
@@ -86,7 +87,7 @@ Our scripts automatically clean up K8s/Kd components after each experiment run. 
 ./scripts/kubeadm.sh clean
 ```
 
-Also note that concurrent experiment runs will interfere with each other. Please make sure that no other experiment is running when you start a new one.
+Also note that concurrent experiment runs will interfere with each other. We use `flock` in the entrypoint scripts, i.e., `all.sh`, to prevent this. The child scripts are NOT intended to be run directly.
 
 ## License
 
