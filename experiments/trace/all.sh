@@ -38,3 +38,7 @@ done
 knative_down
 
 kubeadm_down
+
+###################### generate plots ######################
+cd $BASE_DIR
+python3 plot.py $RUN

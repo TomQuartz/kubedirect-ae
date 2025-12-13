@@ -70,3 +70,7 @@ run_cmd _rs "$cmd" k8s kd
 # cd $BASE_DIR/breakdown/endpoints
 # cmd="./run.sh \$baseline \$n_funcs \$((n_funcs * n_pods_per_func))"
 # run_cmd _ep "$cmd" k8s kd
+
+###################### generate plots ######################
+cd $BASE_DIR
+python3 plot.py scale-funcs $RUN

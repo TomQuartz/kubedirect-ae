@@ -86,3 +86,7 @@ custom_kubelet_down
 # cd $BASE_DIR/breakdown/endpoints
 # cmd="./run.sh \$baseline 1 \$n_pods"
 # run_cmd _ep "$cmd" k8s kd
+
+###################### generate plots ######################
+cd $BASE_DIR
+python3 plot.py scale-pods $RUN
