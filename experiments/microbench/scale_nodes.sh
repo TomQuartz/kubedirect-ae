@@ -14,7 +14,7 @@ RUN=${1:-"test"}
 
 setup_dirs scale-nodes
 
-N_NODES=(500 1000 1500)
+N_NODES=(500 2000)
 # N_NODES=(100)
 n_pods_per_node=5
 

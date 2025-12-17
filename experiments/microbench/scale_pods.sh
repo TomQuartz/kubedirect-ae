@@ -13,7 +13,7 @@ RUN=${1:-"test"}
 
 setup_dirs scale-pods
 
-N_PODS=(100 150 200)
+N_PODS=(100 200)
 n_nodes=20
 # N_PODS=(40)
 # n_nodes=2

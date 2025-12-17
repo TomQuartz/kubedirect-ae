@@ -13,7 +13,7 @@ RUN=${1:-"test"}
 
 setup_dirs scale-funcs
 
-N_FUNCS=(100 150 200)
+N_FUNCS=(100 200)
 # N_FUNCS=(40)
 n_pods_per_func=1
 

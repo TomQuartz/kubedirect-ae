@@ -263,60 +263,7 @@ def plot_scale_pods(results_dir):
     plt.close()
     print(f"Saved: {os.path.join(results_dir, 'e2e.pdf')}")
 
-    # 1b. E2E long plot (wider version with same 4 baselines, no Dirigent)
-    baselines = list(data_e2e_display.keys())
-    n_baselines = len(baselines)
-    width = 0.15
-
-    fig, (ax1, ax2) = plt.subplots(2, 1, sharex=True, figsize=(10, 3.5),
-                                    gridspec_kw={'height_ratios': [1, 2]})
-
-    top_lim = (5, 50)
-    bottom_lim = (0, 4.9)
-    ax1.set_ylim(*top_lim)
-    ax2.set_ylim(*bottom_lim)
-
-    for i, baseline in enumerate(baselines):
-        scores = np.array(data_e2e_display[baseline])
-        color = COLORS[baseline]
-        ax2.bar(x + i * width, scores, width, label=baseline,
-                color=color[0], alpha=color[1], hatch=color[2], edgecolor='black')
-        scores_top = scores.copy()
-        scores_top[scores_top < top_lim[0]] = 0
-        ax1.bar(x + i * width, scores_top, width, label=baseline,
-                color=color[0], alpha=color[1], hatch=color[2], edgecolor='black')
-
-    ax1.spines['bottom'].set_visible(False)
-    ax2.spines['top'].set_visible(False)
-    ax1.tick_params(labeltop=False)
-    ax1.tick_params(axis='x', length=0)
-    ax1.set_yticks(np.array([5, 25, 50]))
-    ax1.set_yticklabels(['5s', '25s', '50s'])
-
-    d = .01
-    kwargs = dict(transform=ax1.transAxes, color='k', clip_on=False)
-    ax1.plot((-d, +d), (-d*2, +d*2), **kwargs)
-    ax1.plot((1 - d, 1 + d), (-d*2, +d*2), **kwargs)
-
-    kwargs.update(transform=ax2.transAxes)
-    ax2.plot((-d, +d), (1 - d, 1 + d), **kwargs)
-    ax2.plot((1 - d, 1 + d), (1 - d, 1 + d), **kwargs)
-
-    ax2.set_yticks(np.arange(0, 5, 1))
-    ax2.set_yticklabels(['0s', '1s', '2s', '3s', '4s'])
-    ax2.set_xticks(x + width * (n_baselines - 1) / 2)
-    ax2.set_xticklabels(settings)
-
-    ax1.legend(fontsize=18, handlelength=1.5, ncol=len(baselines),
-               loc='lower center', bbox_to_anchor=(0.5, 1), frameon=False,
-               shadow=False, handletextpad=0.5, columnspacing=2, borderaxespad=0.)
-
-    fig.tight_layout()
-    fig.subplots_adjust(hspace=0.1)
-    plt.savefig(os.path.join(results_dir, 'e2e.long.pdf'), bbox_inches='tight', transparent=True)
-    plt.close()
-    print(f"Saved: {os.path.join(results_dir, 'e2e.long.pdf')}")
-
+    
     # 2. ReplicaSet breakdown plot
     data_rs = {}
     for baseline in ['k8s', 'kd']:
@@ -386,68 +333,7 @@ def plot_scale_pods(results_dir):
     plt.close()
     print(f"Saved: {os.path.join(results_dir, 'rs.pdf')}")
 
-    # 3b. ReplicaSet horizontal plot (with broken axis)
-    # Reuse data_rs from above
-    settings_short = [str(s) for s in scales]
-    baselines = list(data_rs_display.keys())
-    n_baselines = len(baselines)
-    n_settings = len(settings_short)
-    y = np.arange(n_settings)
-    height = 0.25
-
-    bottom_factor = 2
-    fig, (ax1, ax2) = plt.subplots(1, 2, sharey=True, figsize=(5, 4),
-                                    gridspec_kw={'width_ratios': [bottom_factor, 1]})
-
-    left_lim = (0, 12e-3)
-    right_lim = (1, 50)
-    ax1.set_xlim(*left_lim)
-    ax2.set_xlim(*right_lim)
-
-    for i, baseline in enumerate(baselines):
-        scores = np.array(data_rs_display[baseline])
-        color = COLORS[baseline]
-        ax1.barh(y + i * height, scores, height, label=baseline,
-                 color=color[0], alpha=color[1], hatch=color[2], edgecolor='black')
-        scores_right = scores.copy()
-        scores_right[scores_right < right_lim[0]] = 0
-        if np.sum(scores_right) != 0:
-            ax2.barh(y + i * height, scores_right, height, label=baseline,
-                     color=color[0], alpha=color[1], hatch=color[2], edgecolor='black')
-
-    ax1.spines['right'].set_visible(False)
-    ax2.spines['left'].set_visible(False)
-    ax2.tick_params(labelleft=False)
-    ax2.tick_params(axis='y', length=0)
-
-    ax2.set_xticks(np.array([1, 25, 50]))
-    ax2.set_xticklabels(['1s', '25s', '50s'])
-
-    d = .01
-    kwargs = dict(transform=ax1.transAxes, color='k', clip_on=False)
-    ax1.plot((1 - d, 1 + d), (-d, +d), **kwargs)
-    ax1.plot((1 - d, 1 + d), (1 - d, 1 + d), **kwargs)
-
-    kwargs.update(transform=ax2.transAxes)
-    ax2.plot((-d*bottom_factor, +d*bottom_factor), (-d, +d), **kwargs)
-    ax2.plot((-d*bottom_factor, +d*bottom_factor), (1 - d, 1 + d), **kwargs)
-
-    ax1.set_xticks(np.arange(0, 15e-3, 5e-3))
-    ax1.set_xticklabels(['0', '5ms', '10ms'])
-
-    ax1.set_yticks(y + height * (n_baselines - 1) / 2)
-    ax1.set_yticklabels(settings_short, fontsize=16)
-
-    ax1.legend(fontsize=14, handlelength=1, ncol=len(baselines),
-               loc='lower center', bbox_to_anchor=(0.5, 1), frameon=False,
-               shadow=False, handletextpad=0.5, borderaxespad=0.)
-
-    fig.tight_layout()
-    fig.subplots_adjust(wspace=0.1)
-    plt.savefig(os.path.join(results_dir, 'rs.horizontal.pdf'), bbox_inches='tight', transparent=True)
-    plt.close()
-    print(f"Saved: {os.path.join(results_dir, 'rs.horizontal.pdf')}")
-
+    
     # 3. Scheduler breakdown plot
     data_sched = {}
     for baseline in ['k8s', 'kd']:
@@ -837,84 +723,7 @@ def  plot_scale_funcs(results_dir):
     plt.close()
     print(f"Saved: {os.path.join(results_dir, 'rs.pdf')}")
 
-    # 5. Endpoints breakdown plot (only if data exists)
-    # Check if any endpoint data files exist
-    ep_data_exists = False
-    for baseline in ['k8s', 'kd']:
-        for scale in scales:
-            filepath = os.path.join(results_dir, f"_ep.{baseline}.{scale}.log")
-            if os.path.exists(filepath):
-                ep_data_exists = True
-                break
-        if ep_data_exists:
-            break
-
-    if ep_data_exists:
-        data_ep = {}
-        for baseline in ['k8s', 'kd']:
-            data_ep[baseline] = []
-            for scale in scales:
-                filepath = os.path.join(results_dir, f"_ep.{baseline}.{scale}.log")
-                val = us_to_sec(parse_log(filepath))
-                data_ep[baseline].append(val if val is not None else 0)
-
-        data_ep_display = {
-            'K8s(K8s+)': data_ep['k8s'],
-            'Kd(Kd+)': data_ep['kd'],
-        }
-
-        baselines = list(data_ep_display.keys())
-        fig, (ax1, ax2) = plt.subplots(2, 1, sharex=True, figsize=(4, 3.5),
-                                        gridspec_kw={'height_ratios': [1, 1]})
-
-        top_lim = (2, 50)
-        bottom_lim = (0, 1.5)
-        ax1.set_ylim(*top_lim)
-        ax2.set_ylim(*bottom_lim)
-
-        for i, baseline in enumerate(baselines):
-            scores = np.array(data_ep_display[baseline])
-            color = COLORS[baseline]
-            ax2.bar(x + i * width, scores, width, label=baseline,
-                    color=color[0], alpha=color[1], hatch=color[2], edgecolor='black')
-            scores_top = scores.copy()
-            scores_top[scores_top < top_lim[0]] = 0
-            ax1.bar(x + i * width, scores_top, width, label=baseline,
-                    color=color[0], alpha=color[1], hatch=color[2], edgecolor='black')
-
-        ax1.spines['bottom'].set_visible(False)
-        ax2.spines['top'].set_visible(False)
-        ax1.tick_params(labeltop=False)
-        ax1.tick_params(axis='x', length=0)
-        ax1.set_yticks(np.array([2, 25, 50]))
-        ax1.set_yticklabels(['2s', '25s', '50s'])
-
-        d = .02
-        kwargs = dict(transform=ax1.transAxes, color='k', clip_on=False)
-        ax1.plot((-d, +d), (-d, +d), **kwargs)
-        ax1.plot((1 - d, 1 + d), (-d, +d), **kwargs)
-
-        kwargs.update(transform=ax2.transAxes)
-        ax2.plot((-d, +d), (1 - d, 1 + d), **kwargs)
-        ax2.plot((1 - d, 1 + d), (1 - d, 1 + d), **kwargs)
-
-        ax2.set_yticks(np.arange(0, 1.5, 0.5))
-        ax2.set_yticklabels(['0', '0.5s', '1s'])
-        ax2.set_xticks([])
-        ax2.set_xlabel(f"K={scales[0]}   $\\longrightarrow$   K={scales[-1]}",
-                       fontsize=FONT_SIZE, labelpad=10)
-
-        ax1.legend(fontsize=18, handlelength=1, ncol=len(baselines),
-                   loc='lower center', bbox_to_anchor=(0.5, 1), frameon=False,
-                   shadow=False, handletextpad=0.5, columnspacing=0.5, borderaxespad=0.)
-
-        fig.tight_layout()
-        fig.subplots_adjust(hspace=0.08)
-        plt.savefig(os.path.join(results_dir, 'ep.pdf'), bbox_inches='tight', transparent=True)
-        plt.close()
-        print(f"Saved: {os.path.join(results_dir, 'ep.pdf')}")
-    else:
-        print(f"Skipped: {os.path.join(results_dir, 'ep.pdf')} (no endpoint data files found)")
+    
 
 
 def plot_scale_nodes(results_dir):

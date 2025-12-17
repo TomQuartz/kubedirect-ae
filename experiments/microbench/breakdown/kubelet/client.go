@@ -186,7 +186,7 @@ func run(ctx context.Context, mgr manager.Manager, nodeName string, target strin
 		return
 	default:
 	}
-	fmt.Printf("RPC returned %d/%d in %v\n", atomic.LoadInt32(&nBound), nPods, time.Since(start))
-
-	fmt.Printf("total: %v us\n", time.Since(start).Microseconds())
+	latency := monitor.Since(start)
+	fmt.Printf("RPC returned %d/%d in %v\n", atomic.LoadInt32(&nBound), nPods, latency)
+	fmt.Printf("total: %v us\n", latency.Microseconds())
 }

@@ -5,7 +5,7 @@ cd $BASE_DIR
 
 set -x
 
-USAGE="run.sh kubelet|custom #pods"
+USAGE="run.sh kubelet|custom #pods [node]"
 
 export WORKLOAD=${WORKLOAD:-"test-kubelet"}
 # export IMAGE=${IMAGE:-"gcr.io/google-samples/kubernetes-bootcamp:v1"}
@@ -33,16 +33,23 @@ if ! [[ -n "$1" && "$1" =~ ^[0-9]*$ ]]; then
 fi
 shift
 
-# choose an arbitrary worker node
-for n in $(grep -v "localhost" /etc/hosts | awk '{print $NF}' | grep -vw $(hostname)); do
-    if [ ! -e "$HOME/.ssh/exclude" ]; then
-        node=$n
-        break
-    elif ! grep -Fxq $n $HOME/.ssh/exclude; then
-        node=$n
-        break
-    fi
-done
+node=$1
+if [ -n "$node" ]; then
+    echo "Using provided node: $node"
+else
+    echo "No node provided, choosing one automatically"
+    # choose an arbitrary worker node
+    for n in $(grep -v "localhost" /etc/hosts | awk '{print $NF}' | grep -vw $(hostname)); do
+        if [ ! -e "$HOME/.ssh/exclude" ]; then
+            node=$n
+            break
+        elif ! grep -Fxq $n $HOME/.ssh/exclude; then
+            node=$n
+            break
+        fi
+    done
+fi
+
 if [ -z "$node" ]; then
     echo "No available worker node found"
     exit 1

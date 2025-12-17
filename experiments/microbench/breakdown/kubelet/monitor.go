@@ -3,10 +3,11 @@ package main
 import (
 	"context"
 	"fmt"
+	"sort"
 	"sync"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
 
@@ -28,12 +29,12 @@ type CtrlWorkQueue = workqueue.TypedRateLimitingInterface[reconcile.Request]
 type Expectation struct {
 	wg      *sync.WaitGroup
 	mu      sync.Mutex
-	desired sets.Set[string]
+	desired map[string]time.Time
 }
 
 func NewExpectation() *Expectation {
 	return &Expectation{
-		desired: sets.New[string](),
+		desired: make(map[string]time.Time),
 	}
 }
 
@@ -43,7 +44,7 @@ func (s *Expectation) Watch(wg *sync.WaitGroup, podInfos []*kdctx.PodInfo) {
 	s.wg = wg
 	for _, podInfo := range podInfos {
 		key := fmt.Sprintf("%s/%s", podInfo.Namespace, podInfo.Name)
-		s.desired.Insert(key)
+		s.desired[key] = time.Time{}
 	}
 }
 
@@ -54,8 +55,8 @@ func (s *Expectation) Done(pod *corev1.Pod) bool {
 	if s.wg == nil {
 		return false
 	}
-	if s.desired.Has(key) {
-		s.desired.Delete(key)
+	if t, ok := s.desired[key]; ok && t.IsZero() {
+		s.desired[key] = time.Now()
 		s.wg.Done()
 		return true
 	}
@@ -72,6 +73,25 @@ func NewPodMonitor(ownerName string) *PodMonitor {
 		ownerName:   ownerName,
 		expectation: NewExpectation(),
 	}
+}
+
+
+func (m *PodMonitor) Since(start time.Time) time.Duration {
+	// gather all seen times from expectations
+	seenTimes := []time.Time{}
+	m.expectation.mu.Lock()
+	defer m.expectation.mu.Unlock()
+	for _, t := range m.expectation.desired {
+		seenTimes = append(seenTimes, t)
+	}
+	if len(seenTimes) == 0 {
+		klog.Infof("No seen times recorded")
+		return 0
+	}
+	sort.Slice(seenTimes, func(i, j int) bool { return seenTimes[i].Before(seenTimes[j]) })
+	idx := (90*len(seenTimes)) / 100
+	percentile := seenTimes[idx]
+	return percentile.Sub(start)
 }
 
 func (m *PodMonitor) Watch(wg *sync.WaitGroup, podInfos []*kdctx.PodInfo) {

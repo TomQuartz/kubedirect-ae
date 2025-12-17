@@ -2,6 +2,8 @@
 
 BASE_DIR=`realpath $(dirname $0)`
 cd $BASE_DIR
+. util.sh
+lock
 
 rm -rf dirigent && git clone https://github.com/eth-easl/dirigent.git
 cd dirigent

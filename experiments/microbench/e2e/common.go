@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"sort"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -11,7 +12,6 @@ import (
 	autoscalingv1 "k8s.io/api/autoscaling/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
@@ -34,13 +34,13 @@ type CtrlWorkQueue = workqueue.TypedRateLimitingInterface[reconcile.Request]
 type Expectation struct {
 	wg   *sync.WaitGroup
 	mu   sync.Mutex
-	seen sets.Set[string]
+	seen map[string]time.Time
 }
 
 func NewExpectation(wg *sync.WaitGroup) *Expectation {
 	return &Expectation{
 		wg:   wg,
-		seen: sets.New[string](),
+		seen: make(map[string]time.Time),
 	}
 }
 
@@ -48,10 +48,10 @@ func (s *Expectation) Done(pod *corev1.Pod) bool {
 	key := fmt.Sprintf("%s/%s", pod.Namespace, pod.Name)
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.seen.Has(key) {
+	if _, ok := s.seen[key]; ok {
 		return false
 	}
-	s.seen.Insert(key)
+	s.seen[key] = time.Now()
 	s.wg.Done()
 	return true
 }
@@ -66,6 +66,26 @@ func NewPodMonitor(selector string) *PodMonitor {
 		selector:     selector,
 		expectations: kdutil.NewSharedMap[*Expectation](),
 	}
+}
+
+func (m *PodMonitor) Since(start time.Time) time.Duration {
+	// gather all seen times from expectations
+	seenTimes := []time.Time{}
+	m.expectations.Lock()
+	defer m.expectations.Unlock()
+	for _, exp := range m.expectations.Inner() {
+		for _, t := range exp.seen {
+			seenTimes = append(seenTimes, t)
+		}
+	}
+	if len(seenTimes) == 0 {
+		klog.Infof("No seen times recorded")
+		return 0
+	}
+	sort.Slice(seenTimes, func(i, j int) bool { return seenTimes[i].Before(seenTimes[j]) })
+	idx := (90*len(seenTimes)) / 100
+	percentile := seenTimes[idx]
+	return percentile.Sub(start)
 }
 
 func (m *PodMonitor) Watch(wg *sync.WaitGroup, key string) {
@@ -118,7 +138,7 @@ func (m *PodMonitor) HandlePodEvent(kdLogger *kdutil.Logger, old, new *corev1.Po
 		key := workload.KeyFromObject(new)
 		if exp, ok := m.expectations.Get(key); ok {
 			if exp.Done(new) {
-				kdLogger.Info("Pod ready", "pod", klog.KObj(new))
+				kdLogger.Info("Pod ready", "pod", klog.KObj(new), "node", new.Spec.NodeName)
 			}
 		}
 	}
@@ -212,7 +232,7 @@ func run(ctx context.Context, mgr manager.Manager, selector string, nPods int) {
 		return
 	default:
 	}
-	fmt.Printf("Targets scaled %d/%d in %v\n", atomic.LoadInt32(&nScaled), len(targets.Items), time.Since(start))
-
-	fmt.Printf("total: %v us\n", time.Since(start).Microseconds())
+	latency := monitor.Since(start)
+	fmt.Printf("Targets scaled %d/%d in %v\n", atomic.LoadInt32(&nScaled), len(targets.Items), latency)
+	fmt.Printf("total: %v us\n", latency.Microseconds())
 }
