@@ -54,7 +54,7 @@ It internally calls `scale_pods.sh` (Figure 9), `scale_funcs.sh` (Figure 10) and
 
 For the convenience of reproduction, our scripts can directly generate plots from the results if run to completion. You can find them in the same spot as the raw logs.
 
-Each run of `all.sh` should take 15--20 minutes to complete.
+Each run of `all.sh` should take around 3 hours to complete. `scale_pods.sh` should run for 40 minutes, `scale_funcs.sh` for 1 hour, and `scale_nodes.sh` for 1.5 hours.
 
 ### Azure Functions Trace
 
@@ -76,7 +76,7 @@ For other baselines, the raw logs can be found at `results/${bench}/${ID}`, wher
 
 For the convenience of reproduction, `all.sh` can directly generate plots from the results if run to completion. You can find them under `results/figures/${ID}`.
 
-Each run of `all.sh` should take at least 1.5 hours to complete.
+Each run of `all.sh` should take at 2 hours to complete.
 
 ## Troubleshooting
 
